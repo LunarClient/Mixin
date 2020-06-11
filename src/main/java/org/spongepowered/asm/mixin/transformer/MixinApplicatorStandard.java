@@ -41,6 +41,7 @@ import org.spongepowered.asm.mixin.Intrinsic;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.MixinEnvironment.Option;
 import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Proxy;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -49,6 +50,9 @@ import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.selectors.ITargetSelector;
+import org.spongepowered.asm.mixin.injection.selectors.ITargetSelectorByName;
+import org.spongepowered.asm.mixin.injection.selectors.TargetSelector;
 import org.spongepowered.asm.mixin.throwables.MixinError;
 import org.spongepowered.asm.mixin.transformer.ActivityStack.Activity;
 import org.spongepowered.asm.mixin.transformer.ClassInfo.Field;
@@ -542,6 +546,7 @@ class MixinApplicatorStandard {
      */
     protected void mergeMethod(MixinTargetContext mixin, MethodNode method) {
         boolean isOverwrite = Annotations.getVisible(method, Overwrite.class) != null;
+        AnnotationNode proxy = Annotations.getVisible(method, Proxy.class);
         MethodNode target = this.findTargetMethod(method);
         
         if (target != null) {
@@ -567,6 +572,8 @@ class MixinApplicatorStandard {
         } else if (isOverwrite) {
             throw new InvalidMixinException(mixin, String.format("Overwrite target \"%s\" was not located in target class %s",
                     method.name, mixin.getTargetClassRef()));
+        } else if (proxy != null) {
+            this.mergeProxy(mixin, method, proxy);
         }
         
         this.targetClass.methods.add(method);
@@ -718,6 +725,50 @@ class MixinApplicatorStandard {
             }
         }
         
+        target.name = proxyName;
+    }
+
+    /**
+     * Handles the merging of Proxies
+     * @param mixin Mixin context
+     * @param method Proxy method being merged
+     * @param proxy {@link Proxy} annotation
+     */
+    protected void mergeProxy(MixinTargetContext mixin, MethodNode method, AnnotationNode proxy) {
+        String targetName = Annotations.getValue(proxy);
+
+        ITargetSelector targetSelector = TargetSelector.parse(targetName);
+        if (!(targetSelector instanceof ITargetSelectorByName)) {
+            throw new InvalidMixinException(mixin, "Couldn't parse @Proxy target method: " + targetName);
+        }
+        ITargetSelectorByName targetMember = (ITargetSelectorByName) targetSelector;
+
+        MethodNode target = null;
+        for (MethodNode potentialTarget : this.targetClass.methods) {
+            if (potentialTarget.name.equals(targetMember.getName())
+                    && (targetMember.getDesc() == null || potentialTarget.desc.equals(targetMember.getDesc()))) {
+                target = potentialTarget;
+                break;
+            }
+        }
+        if (target == null) {
+            throw new InvalidMixinException(mixin, "Couldn't find @Proxy target method " + targetMember.getName() + " " + targetMember.getDesc());
+        }
+        String proxyName = "original+" + target.name;
+
+        // change references of the real method to the new proxy name
+        for (Iterator<AbstractInsnNode> iter = method.instructions.iterator(); iter.hasNext();) {
+            AbstractInsnNode insn = iter.next();
+            if (insn instanceof MethodInsnNode && insn.getOpcode() != Opcodes.INVOKESTATIC) {
+                MethodInsnNode methodNode = (MethodInsnNode) insn;
+                if (methodNode.owner.equals(this.targetClass.name) && methodNode.name.equals(target.name) && methodNode.desc.equals(target.desc)) {
+                    methodNode.name = proxyName;
+                }
+            }
+        }
+
+        // swap the method names
+        method.name = target.name;
         target.name = proxyName;
     }
 
