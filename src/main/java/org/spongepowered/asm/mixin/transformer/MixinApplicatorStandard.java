@@ -754,7 +754,7 @@ class MixinApplicatorStandard {
         if (target == null) {
             throw new InvalidMixinException(mixin, "Couldn't find @Proxy target method " + targetMember.getName() + " " + targetMember.getDesc());
         }
-        String proxyName = "original+" + target.name;
+        String proxyName = "original$" + target.name;
 
         // change references of the real method to the new proxy name
         for (Iterator<AbstractInsnNode> iter = method.instructions.iterator(); iter.hasNext();) {
