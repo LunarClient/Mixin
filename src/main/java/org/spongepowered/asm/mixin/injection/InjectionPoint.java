@@ -289,6 +289,19 @@ public abstract class InjectionPoint {
      * @return restriction level
      */
     public RestrictTargetLevel getTargetRestriction(IInjectionPointContext context) {
+        return RestrictTargetLevel.CONSTRUCTORS_AFTER_DELEGATE; // Fabric change: allow inject in constructors
+    }
+
+    /**
+     * Returns the target restriction level for this injection point's cancellation for
+     * {@literal @Inject} annotations. This level defines whether an injection point
+     * can declare {@code cancellable = true}.
+     *
+     * @param context injection-specific context
+     * @return restriction level
+     */
+    // Fabric addition: prevent cancellation of inject in constructors
+    public RestrictTargetLevel getCancellationRestriction(IInjectionPointContext context) {
         return RestrictTargetLevel.METHODS_ONLY;
     }
 
