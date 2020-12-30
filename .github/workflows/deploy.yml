@@ -26,7 +26,7 @@ jobs:
           aws-region: us-east-2
           
       - name: Authenticate with CodeArtifact
-        run: echo "MAVEN_PASSWORD=`aws codeartifact get-authorization-token --domain lunarclient --domain-owner 556596233875 --query authorizationToken --output text`" >> $GITHUB_ENV
+        run: echo "CODEARTIFACT_TOKEN=`aws codeartifact get-authorization-token --domain lunarclient --domain-owner 556596233875 --query authorizationToken --output text`" >> $GITHUB_ENV
 
       - name: Build
-        run: ./gradlew uploadArchives -PspongeRepo="https://lunarclient-556596233875.d.codeartifact.us-east-2.amazonaws.com/maven/lunarclient" -PspongeUsername="aws" -PspongePassword=${MAVEN_PASSWORD}
+        run: ./gradlew uploadArchives -PspongeRepo="https://lunarclient-556596233875.d.codeartifact.us-east-2.amazonaws.com/maven/lunarclient" -PspongeUsername="aws" -PspongePassword=${CODEARTIFACT_TOKEN}
