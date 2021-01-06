@@ -14,6 +14,7 @@ apply plugin: 'java'
 apply plugin: 'license'
 apply plugin: 'checkstyle'
 apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'eclipse'
 apply plugin: 'idea'
 apply plugin: 'com.github.johnrengelman.shadow'
@@ -367,70 +368,48 @@ ext.excludePomDeps = [
     'gson',
 ]
 
-ext.mavenPom = {
-    groupId = project.group
-    version = project.version
-    artifactId = project.archivesBaseName
-    project {
-        name project.archivesBaseName
-        packaging project.packaging
-        description project.projectName
-        url 'http://www.spongepowered.org/'
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = project.archivesBaseName
+            from components.java
+            pom {
+                name = project.archivesBaseName
+                packaging = project.packaging
+                description = project.projectName
+                url = 'http://www.spongepowered.org/'
 
-        scm {
-            url 'https://github.com/SpongePowered/Mixin'
-            connection 'scm:git:git://github.com/SpongePowered/Mixin.git'
-            developerConnection 'scm:git:git@github.com:SpongePowered/Mixin.git'
-        }
+                scm {
+                    url = 'https://github.com/SpongePowered/Mixin'
+                    connection = 'scm:git:git://github.com/SpongePowered/Mixin.git'
+                    developerConnection = 'scm:git:git@github.com:SpongePowered/Mixin.git'
+                }
 
-        issueManagement {
-            system 'GitHub Issues'
-            url 'https://github.com/SpongePowered/Mixin/issues'
-        }
+                issueManagement {
+                    system = 'GitHub Issues'
+                    url = 'https://github.com/SpongePowered/Mixin/issues'
+                }
 
-        licenses {
-            license {
-                name 'MIT license'
-                url 'http://opensource.org/licenses/MIT'
-                distribution 'repo'
+                licenses {
+                    license {
+                        name = 'MIT license'
+                        url = 'http://opensource.org/licenses/MIT'
+                        distribution = 'repo'
+                    }
+                }
             }
         }
     }
-    whenConfigured {
-        dependencies = dependencies.findAll {
-            !it.artifactId.matches(excludePomDeps.join('|'))
-        }
-    }
-}
 
-uploadArchives {
     repositories {
-        // Push releases to release repo
-        if (buildType == 'RELEASE' && project.hasProperty("releaseRepo")) {
-            mavenDeployer {
-                name = "release"
-                configuration = configurations.deployerJars
-                pom mavenPom
-                repository(url: project.releaseRepo) {
-                    authentication(userName: project.releaseRepoUsername, password: project.releaseRepoPassword)
-                }
-            }
-        }
-            
-        // Push everything to sponge repo
         if (project.hasProperty("spongeRepo")) {
-            mavenDeployer {
-                name = "sponge"
-                configuration = configurations.deployerJars
-                pom mavenPom
-                repository(url: project.spongeRepo) {
-                    authentication(userName: project.spongeUsername, password: project.spongePassword)
+            maven {
+                url = uri(project.property("spongeRepo").toString())
+                credentials {
+                    username = project.property("spongeUsername").toString()
+                    password = project.property("spongePassword").toString()
                 }
             }
         }
     }
 }
-
-install.repositories.mavenInstaller {
-    pom mavenPom
-} 
