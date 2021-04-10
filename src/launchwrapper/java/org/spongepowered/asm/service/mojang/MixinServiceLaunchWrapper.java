@@ -170,7 +170,7 @@ public class MixinServiceLaunchWrapper extends MixinServiceAbstract implements I
      */
     @Override
     public CompatibilityLevel getMaxCompatibilityLevel() {
-        return CompatibilityLevel.JAVA_8;
+        return CompatibilityLevel.JAVA_16;
     }
 
     /* (non-Javadoc)
