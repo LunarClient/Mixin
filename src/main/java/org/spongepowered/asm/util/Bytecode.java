@@ -1144,7 +1144,26 @@ public final class Bytecode {
                 }
             }
         }
-        
+
+        // skip labels at the end of the instruction list
+        while (ia.hasNext()) {
+            AbstractInsnNode na = ia.next();
+            if (!(na instanceof LabelNode)) {
+                // there is another instruction that isn't a label, go back one
+                ia.previous();
+                break;
+            }
+        }
+
+        while (ib.hasNext()) {
+            AbstractInsnNode nb = ib.next();
+            if (!(nb instanceof LabelNode)) {
+                // there is another instruction that isn't a label, go back one
+                ib.previous();
+                break;
+            }
+        }
+
         if (ia.hasNext() || ib.hasNext()) {
             throw new SyntheticBridgeException(Problem.BAD_LENGTH, a.name, a.desc, index, null, null);
         }
