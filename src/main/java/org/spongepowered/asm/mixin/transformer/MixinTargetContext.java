@@ -54,8 +54,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.struct.InjectionInfo;
 import org.spongepowered.asm.mixin.injection.struct.InjectorGroupInfo;
 import org.spongepowered.asm.mixin.injection.struct.Target;
-import org.spongepowered.asm.mixin.injection.throwables.InjectionError;
 import org.spongepowered.asm.mixin.injection.throwables.InjectionValidationException;
+import org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException;
 import org.spongepowered.asm.mixin.refmap.IMixinContext;
 import org.spongepowered.asm.mixin.refmap.IReferenceMapper;
 import org.spongepowered.asm.mixin.struct.MemberRef;
@@ -666,7 +666,8 @@ public class MixinTargetContext extends ClassContext implements IMixinContext {
         if (typeInsn.getOpcode() == Opcodes.CHECKCAST
                 && typeInsn.desc.equals(this.getTarget().getClassRef())
                 && lastNode.getOpcode() == Opcodes.ALOAD
-                && ((VarInsnNode)lastNode).var == 0) {
+                && ((VarInsnNode)lastNode).var == 0
+                && !Bytecode.isStatic(method)) {
             iter.remove();
             return;
         }
@@ -972,7 +973,6 @@ public class MixinTargetContext extends ClassContext implements IMixinContext {
      * @param method method to get a target handle for
      * @return new or existing target handle for the supplied method
      */
-    @Override
     public Target getTargetMethod(MethodNode method) {
         return this.getTarget().getTargetMethod(method);
     }
@@ -1194,9 +1194,9 @@ public class MixinTargetContext extends ClassContext implements IMixinContext {
             activity.end();
         } catch (InjectionValidationException ex) {
             InjectorGroupInfo group = ex.getGroup();
-            throw new InjectionError(
+            throw new InvalidInjectionException(group.getMembers().iterator().next().getMixin(),
                 String.format("Critical injection failure: Callback group %s in %s failed injection check: %s",
-                group, this.mixin, ex.getMessage()));
+                group, this.mixin, ex.getMessage()), ex);
         } catch (InvalidMixinException ex) {
             ex.prepend(this.activities);
             throw ex;
@@ -1257,7 +1257,7 @@ public class MixinTargetContext extends ClassContext implements IMixinContext {
                 }
                 
                 methodActivity.next("Undecorate");
-                method.visibleAnnotations.remove(injectInfo.getAnnotation());
+                method.visibleAnnotations.remove(injectInfo.getAnnotationNode());
                 methodActivity.end();
             }
             prepareActivity.end();

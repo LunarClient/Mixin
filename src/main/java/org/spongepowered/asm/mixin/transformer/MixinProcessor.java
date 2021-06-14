@@ -42,6 +42,8 @@ import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinErrorHandler;
 import org.spongepowered.asm.mixin.extensibility.IMixinErrorHandler.ErrorAction;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import org.spongepowered.asm.mixin.injection.InjectionPoint;
+import org.spongepowered.asm.mixin.injection.selectors.ITargetSelectorDynamic;
 import org.spongepowered.asm.mixin.throwables.ClassAlreadyLoadedException;
 import org.spongepowered.asm.mixin.throwables.MixinApplyError;
 import org.spongepowered.asm.mixin.throwables.MixinException;
@@ -69,7 +71,7 @@ import org.spongepowered.asm.util.perf.Profiler.Section;
 /**
  * Heart of the Mixin pipeline 
  */
-public class MixinProcessor {
+class MixinProcessor {
 
     /**
      * Phase during which an error occurred, delegates to functionality in
@@ -304,7 +306,6 @@ public class MixinProcessor {
                 return success;
             }
 
-            SortedSet<MixinInfo> mixins = null;
             MixinConfig packageOwnedByConfig = null;
             
             for (MixinConfig config : this.configs) {
@@ -315,7 +316,20 @@ public class MixinProcessor {
                     }
                     continue;
                 }
+            }                
+
+            if (packageOwnedByConfig != null) {
+                // AMS - Temp passthrough for injection points and dynamic selectors. Moving to service in 0.9
+                ClassInfo targetInfo = ClassInfo.fromClassNode(targetClassNode);
+                if (targetInfo.hasSuperClass(InjectionPoint.class) || targetInfo.hasSuperClass(ITargetSelectorDynamic.class)) {
+                    return false;
+                }
                 
+                throw new IllegalClassLoadError(this.getInvalidClassError(name, targetClassNode, packageOwnedByConfig));
+            }
+
+            SortedSet<MixinInfo> mixins = null;
+            for (MixinConfig config : this.configs) {
                 if (config.hasMixinsFor(name)) {
                     if (mixins == null) {
                         mixins = new TreeSet<MixinInfo>();
@@ -324,10 +338,6 @@ public class MixinProcessor {
                     // Get and sort mixins for the class
                     mixins.addAll(config.getMixinsFor(name));
                 }
-            }
-
-            if (packageOwnedByConfig != null) {
-                throw new IllegalClassLoadError(this.getInvalidClassError(name, targetClassNode, packageOwnedByConfig));
             }
             
             if (mixins != null) {
@@ -359,7 +369,6 @@ public class MixinProcessor {
         } catch (MixinTransformerError er) {
             throw er;
         } catch (Throwable th) {
-            th.printStackTrace();
             this.dumpClassOnFailure(name, targetClassNode, environment);
             throw new MixinTransformerError("An unexpected critical error was encountered", th);
         } finally {
@@ -374,12 +383,6 @@ public class MixinProcessor {
             return String.format("Illegal classload request for %s. Mixin is defined in %s and cannot be referenced directly", name, ownedByConfig);
         }
 
-//        AnnotationNode shadow = Annotations.getInvisible(targetClassNode, Shadow.class);
-//        if (shadow != null) {
-//            return String.format("Illegal classload request for UNRESOLVED @Shadow %s. "
-//                    + "The proxy was referenced outside a mixin or the mixin processor encountered an internal error.", name);
-//        }
-        
         AnnotationNode mixin = Annotations.getInvisible(targetClassNode, Mixin.class);
         if (mixin != null) {
             Variant variant = MixinInfo.getVariant(targetClassNode);

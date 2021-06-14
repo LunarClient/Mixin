@@ -95,6 +95,8 @@ sourceSets {
     }
     launchwrapper {
         compileClasspath += main.output
+        sourceCompatibility = '1.8'
+        targetCompatibility = '1.8'
     }
     modlauncher {
         compileClasspath += main.output
@@ -155,7 +157,7 @@ dependencies {
     modlauncherCompile "org.ow2.asm:asm-tree:$modlauncherAsmVersion"
     modlauncherCompile "org.ow2.asm:asm-commons:$modlauncherAsmVersion"
     modlauncherCompile "org.ow2.asm:asm-util:$modlauncherAsmVersion"
-    modlauncherCompile ('cpw.mods:modlauncher:4.2.0') {
+    modlauncherCompile ("cpw.mods:modlauncher:$modlauncherVersion") {
         exclude module: 'log4j-core'
     }
     
@@ -171,7 +173,23 @@ dependencies {
 }
 
 javadoc {
+    exclude '**/throwables'
     classpath += sourceSets.legacy.output
+    source sourceSets.ap.allJava
+    exclude {
+        it.relativePath.file && it.relativePath.pathString =~ 'tools' && !(it.name =~ /SuppressedBy|package-info/) }
+    options {
+        docTitle 'Welcome to the Mixin Javadoc'
+        overview 'docs/javadoc/overview.html'
+        stylesheetFile file('docs/javadoc/mixin.css')
+        addBooleanOption '-allow-script-in-comments', true
+    }
+    doLast {
+        copy {
+            from 'docs/javadoc/resources'
+            into outputDirectory
+        }
+    }
 }
 
 // Eclipse
@@ -221,7 +239,7 @@ checkstyle {
         "year"        : project.inceptionYear
     ]
     configFile = file("checkstyle.xml")
-    toolVersion = '8.25'
+    toolVersion = '8.36.1'
 }
 
 // Source compiler configuration

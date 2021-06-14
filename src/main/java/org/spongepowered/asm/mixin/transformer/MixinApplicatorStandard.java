@@ -643,7 +643,7 @@ class MixinApplicatorStandard {
                     return true;
                 }
                 throw new InvalidMixinException(mixin, String.format("Incompatible @%s %s (for %s) in %s previously written by %s (for %s)",
-                        Bytecode.getSimpleName(accMethod), method.name, myTarget, mixin, owner, trTarget));
+                        Annotations.getSimpleName(accMethod), method.name, myTarget, mixin, owner, trTarget));
             }
         }
 
@@ -737,7 +737,7 @@ class MixinApplicatorStandard {
     protected void mergeProxy(MixinTargetContext mixin, MethodNode method, AnnotationNode proxy) {
         String targetName = Annotations.getValue(proxy);
 
-        ITargetSelector targetSelector = TargetSelector.parse(targetName);
+        ITargetSelector targetSelector = TargetSelector.parse(targetName, null);
         if (!(targetSelector instanceof ITargetSelectorByName)) {
             throw new InvalidMixinException(mixin, "Couldn't parse @Proxy target method: " + targetName);
         }
@@ -1191,7 +1191,7 @@ class MixinApplicatorStandard {
      */
     protected final FieldNode findTargetField(FieldNode searchFor) {
         for (FieldNode target : this.targetClass.fields) {
-            if (target.name.equals(searchFor.name)) {
+            if (target.name.equals(searchFor.name) && target.desc.equals(searchFor.desc)) {
                 return target;
             }
         }

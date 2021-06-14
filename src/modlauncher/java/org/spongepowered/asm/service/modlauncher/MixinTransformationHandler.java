@@ -22,18 +22,24 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package org.spongepowered.asm.mixin.transformer;
+package org.spongepowered.asm.service.modlauncher;
 
 import java.util.EnumSet;
 
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.launch.IClassProcessor;
+import org.spongepowered.asm.launch.MixinLaunchPlugin;
 import org.spongepowered.asm.launch.Phases;
 import org.spongepowered.asm.mixin.MixinEnvironment;
+import org.spongepowered.asm.mixin.transformer.IMixinTransformer;
+import org.spongepowered.asm.mixin.transformer.IMixinTransformerFactory;
 import org.spongepowered.asm.service.ISyntheticClassInfo;
 import org.spongepowered.asm.service.ISyntheticClassRegistry;
 
+import com.google.common.base.Preconditions;
+
+import cpw.mods.modlauncher.api.ITransformerActivity;
 import cpw.mods.modlauncher.serviceapi.ILaunchPluginService.Phase;
 
 /**
@@ -41,16 +47,16 @@ import cpw.mods.modlauncher.serviceapi.ILaunchPluginService.Phase;
  * application, post processing and synthetic class generation
  */
 public class MixinTransformationHandler implements IClassProcessor {
-
+    
     /**
-     * Lock for initialising the transformer
+     * Mixin transformer factory, from service
      */
-    private final Object initialisationLock = new Object();
+    private IMixinTransformerFactory transformerFactory;
     
     /**
      * Transformer pipeline instance
      */
-    private MixinTransformer transformer;
+    private IMixinTransformer transformer;
 
     /**
      * Synthetic class registry, used so the processor knows when to respond to
@@ -58,6 +64,11 @@ public class MixinTransformationHandler implements IClassProcessor {
      */
     private ISyntheticClassRegistry registry;
     
+    void offer(IMixinTransformerFactory transformerFactory) {
+        Preconditions.checkNotNull(transformerFactory, "transformerFactory");
+        this.transformerFactory = transformerFactory;
+    }
+
     /* (non-Javadoc)
      * @see org.spongepowered.asm.launch.IClassProcessor#handlesClass(
      *      org.objectweb.asm.Type, boolean, java.lang.String)
@@ -87,26 +98,31 @@ public class MixinTransformationHandler implements IClassProcessor {
         if (phase == Phase.BEFORE) {
             return false;
         }
-        
-        MixinTransformer transformer = null;
+
         if (this.transformer == null) {
-            synchronized (this.initialisationLock) {
-                transformer = this.transformer;
-                if (transformer == null) {
-                    transformer = this.transformer = new MixinTransformer();
-                    this.registry = transformer.getExtensions().getSyntheticClassRegistry();
-                }
+            if (this.transformerFactory == null) {
+                throw new IllegalStateException("processClass called before transformer factory offered to transformation handler");
             }
-        } else {
-            transformer = this.transformer;
+            this.transformer = this.transformerFactory.createTransformer();
+            this.registry = this.transformer.getExtensions().getSyntheticClassRegistry();
+        }
+        
+        // Don't transform when the reason is mixin (side-loading in progress) 
+        if (MixinLaunchPlugin.NAME.equals(reason)) {
+            return false;
         }
 
         MixinEnvironment environment = MixinEnvironment.getCurrentEnvironment();
         ISyntheticClassInfo syntheticClass = this.registry.findSyntheticClass(classType.getClassName());
         if (syntheticClass != null) {
-            return transformer.generateClass(environment, classType.getClassName(), classNode);
+            return this.transformer.generateClass(environment, classType.getClassName(), classNode);
         }
-        return transformer.transformClass(environment, classType.getClassName(), classNode);
+
+        if (ITransformerActivity.COMPUTING_FRAMES_REASON.equals(reason)) {
+            return this.transformer.computeFramesForClass(environment, classType.getClassName(), classNode);
+        }
+        
+        return this.transformer.transformClass(environment, classType.getClassName(), classNode);
     }
 
 }

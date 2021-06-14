@@ -34,13 +34,14 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 import org.spongepowered.asm.mixin.injection.Coerce;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.InjectionPoint;
 import org.spongepowered.asm.mixin.injection.Surrogate;
 import org.spongepowered.asm.mixin.injection.code.Injector;
 import org.spongepowered.asm.mixin.injection.struct.InjectionInfo;
+import org.spongepowered.asm.mixin.injection.struct.InjectionNodes.InjectionNode;
 import org.spongepowered.asm.mixin.injection.struct.Target;
 import org.spongepowered.asm.mixin.injection.struct.Target.Extension;
-import org.spongepowered.asm.mixin.injection.struct.InjectionNodes.InjectionNode;
 import org.spongepowered.asm.mixin.injection.throwables.InjectionError;
 import org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException;
 import org.spongepowered.asm.util.Annotations;
@@ -53,7 +54,8 @@ import org.spongepowered.asm.util.SignaturePrinter;
 import com.google.common.base.Strings;
 
 /**
- * This class is responsible for generating the bytecode for injected callbacks
+ * This class is responsible for generating the bytecode for injected callbacks,
+ * for details of usage see {@link Inject &#64;Inject}.
  */
 public class CallbackInjector extends Injector {
     
@@ -465,7 +467,7 @@ public class CallbackInjector extends Injector {
         MethodNode callbackMethod = this.methodNode;
 
         if (!callback.checkDescriptor(this.methodNode.desc)) {
-            if (this.info.getTargets().size() > 1) {
+            if (this.info.getTargetCount() > 1) {
                 return; // Look for a match in other targets before failing
             }
 
@@ -539,13 +541,15 @@ public class CallbackInjector extends Injector {
      */
     private String generateBadLVTMessage(final Callback callback) {
         int position = callback.target.indexOf(callback.node);
-        List<String> expected = CallbackInjector.summariseLocals(this.methodNode.desc, callback.target.arguments.length + 1);
-        List<String> found = CallbackInjector.summariseLocals(callback.getDescriptor(), callback.frameSize + (callback.target.isStatic ? 1 : 0));
+        int targetArgc = callback.target.arguments.length + 1;
+        List<String> expected = CallbackInjector.summariseLocals(this.methodNode.desc, targetArgc, 255);
+        List<String> found = CallbackInjector.summariseLocals(callback.getDescriptorWithAllLocals(), targetArgc, expected.size());
         if (expected.equals(found)) {
             return String.format("Invalid descriptor on %s! Expected %s but found %s", this.info, callback.getDescriptor(), this.methodNode.desc);
         }
-        return String.format("LVT in %s has incompatible changes at opcode %d in callback %s.\nExpected: %s\n   Found: %s",
-                callback.target, position, this, expected, found);
+        List<String> available = CallbackInjector.summariseLocals(callback.getDescriptorWithAllLocals(), targetArgc, 255);
+        return String.format("LVT in %s has incompatible changes at opcode %d in callback %s.\n Expected: %s\n    Found: %s\nAvailable: %s",
+                callback.target, position, this.info, expected, found, available);
     }
 
     /**
@@ -793,14 +797,14 @@ public class CallbackInjector extends Injector {
         return this.isStatic;
     }
 
-    private static List<String> summariseLocals(String desc, int pos) {
-        return CallbackInjector.summariseLocals(Type.getArgumentTypes(desc), pos);
+    private static List<String> summariseLocals(String desc, int pos, int count) {
+        return CallbackInjector.summariseLocals(Type.getArgumentTypes(desc), pos, count);
     }
 
-    private static List<String> summariseLocals(Type[] locals, int pos) {
+    private static List<String> summariseLocals(Type[] locals, int pos, int count) {
         List<String> list = new ArrayList<String>();
         if (locals != null) {
-            for (; pos < locals.length; pos++) {
+            for (; pos < locals.length && list.size() < count; pos++) {
                 if (locals[pos] != null) {
                     list.add(locals[pos].toString());
                 }

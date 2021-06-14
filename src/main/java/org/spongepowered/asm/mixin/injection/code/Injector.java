@@ -256,7 +256,7 @@ public abstract class Injector {
     public final void inject(Target target, List<InjectionNode> nodes) {
         for (InjectionNode node : nodes) {
             if (node.isRemoved()) {
-                if (this.info.getContext().getOption(Option.DEBUG_VERBOSE)) {
+                if (this.info.getMixin().getOption(Option.DEBUG_VERBOSE)) {
                     Injector.logger.warn("Target node for {} was removed by a previous injector in {}", this.info, target);
                 }
                 continue;
@@ -279,7 +279,7 @@ public abstract class Injector {
      * @return Target insn nodes in the target method
      */
     private Collection<TargetNode> findTargetNodes(InjectorTarget injectorTarget, List<InjectionPoint> injectionPoints) {
-        IMixinContext mixin = this.info.getContext();
+        IMixinContext mixin = this.info.getMixin();
         MethodNode method = injectorTarget.getMethod();
         Map<Integer, TargetNode> targetNodes = new TreeMap<Integer, TargetNode>();
         Collection<AbstractInsnNode> nodes = new ArrayList<AbstractInsnNode>(32);
@@ -295,7 +295,7 @@ public abstract class Injector {
                         injectorTarget, injectorTarget.getMergedBy(), injectorTarget.getMergedPriority()));
             }
 
-            if (this.findTargetNodes(method, injectionPoint, injectorTarget.getSlice(injectionPoint), nodes)) {
+            if (this.findTargetNodes(method, injectionPoint, injectorTarget, nodes)) {
                 for (AbstractInsnNode insn : nodes) {
                     Integer key = method.instructions.indexOf(insn);
                     TargetNode targetNode = targetNodes.get(key);
@@ -311,8 +311,9 @@ public abstract class Injector {
         return targetNodes.values();
     }
 
-    protected boolean findTargetNodes(MethodNode into, InjectionPoint injectionPoint, InsnList insns, Collection<AbstractInsnNode> nodes) {
-        return injectionPoint.find(into.desc, insns, nodes);
+    protected boolean findTargetNodes(MethodNode into, InjectionPoint injectionPoint, InjectorTarget injectorTarget,
+            Collection<AbstractInsnNode> nodes) {
+        return injectionPoint.find(into.desc, injectorTarget.getSlice(injectionPoint), nodes);
     }
 
     protected void sanityCheck(Target target, List<InjectionPoint> injectionPoints) {
@@ -521,7 +522,7 @@ public abstract class Injector {
      * @param args Array of handler args, must not be null
      */
     protected final void validateParams(InjectorData injector, Type returnType, Type... args) {
-        String description = String.format("%s %s method %s from %s", this.annotationType, injector, this, this.info.getContext());
+        String description = String.format("%s %s method %s from %s", this.annotationType, injector, this, this.info.getMixin());
         int argIndex = 0;
         try {
             injector.coerceReturnType = this.checkCoerce(-1, returnType, description, injector.allowCoerceArgs);
@@ -573,12 +574,13 @@ public abstract class Injector {
      *      if coercion is required for the argument
      */
     protected final boolean checkCoerce(int index, Type toType, String description, boolean allowCoercion) {
-        Type fromType = index < 0 ? this.returnType : this.methodArgs[index];
         if (index >= this.methodArgs.length) {
             throw new InvalidInjectionException(this.info, String.format(
                     "%s has an invalid signature. Not enough arguments: expected argument type %s at index %d",
                     description, SignaturePrinter.getTypeName(toType), index));
         }
+
+        Type fromType = index < 0 ? this.returnType : this.methodArgs[index];
         
         AnnotationNode coerce = Annotations.getInvisibleParameter(this.methodNode, Coerce.class, index);
         boolean isReturn = index < 0;
@@ -586,7 +588,7 @@ public abstract class Injector {
         Object argIndex = isReturn ? "" : " at index " + index;
         
         if (fromType.equals(toType)) {
-            if (coerce != null && this.info.getContext().getOption(Option.DEBUG_VERBOSE)) {
+            if (coerce != null && this.info.getMixin().getOption(Option.DEBUG_VERBOSE)) {
                 Injector.logger.info("Possibly-redundant @Coerce on {} {} type{}, {} is identical to {}", description, argType, argIndex,
                         SignaturePrinter.getTypeName(toType), SignaturePrinter.getTypeName(fromType));
             }
@@ -618,12 +620,13 @@ public abstract class Injector {
      * @param exceptionType Type of exception to throw (binary name)
      * @param message Message to pass to the exception constructor
      */
-    protected void throwException(InsnList insns, String exceptionType, String message) {
+    protected void throwException(InsnList insns, Extension extraStack, String exceptionType, String message) {
         insns.add(new TypeInsnNode(Opcodes.NEW, exceptionType));
         insns.add(new InsnNode(Opcodes.DUP));
         insns.add(new LdcInsnNode(message));
         insns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, exceptionType, "<init>", "(Ljava/lang/String;)V", false));
         insns.add(new InsnNode(Opcodes.ATHROW));
+        extraStack.add(3);
     }
     
     /**
