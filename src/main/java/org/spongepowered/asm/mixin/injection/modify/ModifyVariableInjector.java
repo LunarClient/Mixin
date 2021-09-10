@@ -43,6 +43,7 @@ import org.spongepowered.asm.mixin.injection.struct.InjectionNodes.InjectionNode
 import org.spongepowered.asm.mixin.injection.struct.InjectionPointData;
 import org.spongepowered.asm.mixin.injection.struct.Target;
 import org.spongepowered.asm.mixin.injection.struct.Target.Extension;
+import org.spongepowered.asm.mixin.injection.throwables.InjectionError;
 import org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException;
 import org.spongepowered.asm.mixin.refmap.IMixinContext;
 import org.spongepowered.asm.util.Bytecode;
@@ -55,7 +56,7 @@ import org.spongepowered.asm.util.SignaturePrinter;
  * {@link ModifyVariable}.
  */
 public class ModifyVariableInjector extends Injector {
-        
+
     /**
      * Target context information
      */
@@ -66,8 +67,8 @@ public class ModifyVariableInjector extends Injector {
          */
         final InsnList insns = new InsnList();
 
-        public Context(Type returnType, boolean argsOnly, Target target, AbstractInsnNode node) {
-            super(returnType, argsOnly, target, node);
+        public Context(InjectionInfo info, Type returnType, boolean argsOnly, Target target, AbstractInsnNode node) {
+            super(info, returnType, argsOnly, target, node);
         }
         
     }
@@ -92,12 +93,12 @@ public class ModifyVariableInjector extends Injector {
         abstract boolean find(InjectionInfo info, InsnList insns, Collection<AbstractInsnNode> nodes, Target target);
 
     }
-    
+
     /**
      * True to consider only method args
      */
     private final LocalVariableDiscriminator discriminator;
-
+    
     /**
      * @param info Injection info
      * @param discriminator discriminator
@@ -137,6 +138,29 @@ public class ModifyVariableInjector extends Injector {
     }
     
     /**
+     * Generate a key which uniquely identifies the combination of return type,
+     * frame type and target injection node so that injectors targetting the
+     * same instruction still get unique contexts.
+     * 
+     * @param target Target method
+     * @param node Target node
+     * @return Key for storing/retrieving the injector context decoration
+     */
+    protected String getTargetNodeKey(Target target, InjectionNode node) {
+        return String.format("localcontext(%s,%s,#%s)", this.returnType, this.discriminator.isArgsOnly() ? "argsOnly" : "fullFrame", node.getId());
+    }
+    
+    @Override
+    protected void preInject(Target target, InjectionNode node) {
+        String key = this.getTargetNodeKey(target, node);
+        if (node.hasDecoration(key)) {
+            return; // already have a suitable context
+        }
+        Context context = new Context(this.info, this.returnType, this.discriminator.isArgsOnly(), target, node.getCurrentTarget());
+        node.<Context>decorate(key, context);
+    }
+    
+    /**
      * Do the injection
      */
     @Override
@@ -145,15 +169,36 @@ public class ModifyVariableInjector extends Injector {
             throw new InvalidInjectionException(this.info, "Variable modifier target for " + this + " was removed by another injector");
         }
         
-        Context context = new Context(this.returnType, this.discriminator.isArgsOnly(), target, node.getCurrentTarget());
+        Context context = node.<Context>getDecoration(this.getTargetNodeKey(target, node));
+        if (context == null) {
+            throw new InjectionError(String.format(
+                    "%s injector target is missing CONTEXT decoration for %s. PreInjection failure or illegal internal state change",
+                    this.annotationType, this.info));
+        }
+        
+        // If the context is being reused (because two identical injectors are targetting this node)
+        // then the insns SHOULD have been drained by the previous insertBefore. If the list hasn't
+        // been cleared for some reason then something probably went wrong during the previous inject
+        if (context.insns.size() > 0) {
+            throw new InjectionError(String.format(
+                    "%s injector target has contaminated CONTEXT decoration for %s. Check for previous errors.",
+                    this.annotationType, this.info));
+        }
         
         if (this.discriminator.printLVT()) {
             this.printLocals(target, context);
         }
-
+        
         this.checkTargetForNode(target, node, RestrictTargetLevel.ALLOW_ALL);
         
         InjectorData handler = new InjectorData(target, "handler", false);
+
+        if (this.returnType == Type.VOID_TYPE) {
+            throw new InvalidInjectionException(this.info, String.format(
+                    "%s %s method %s from %s has an invalid signature, cannot return a VOID type.",
+                    this.annotationType, handler, this, this.info.getMixin()));
+        }
+
         this.validateParams(handler, this.returnType, this.returnType);
         
         Extension extraStack = target.extendStack();
@@ -179,9 +224,6 @@ public class ModifyVariableInjector extends Injector {
      * Pretty-print local variable information to stderr
      */
     private void printLocals(Target target, Context context) {
-        SignaturePrinter handlerSig = new SignaturePrinter(this.info.getMethodName(), this.returnType, this.methodArgs, new String[] { "var" });
-        handlerSig.setModifiers(this.methodNode);
-
         String matchMode = "EXPLICIT (match by criteria)";
         if (this.discriminator.isImplicit(context)) {
             int candidateCount = context.getCandidateCount();

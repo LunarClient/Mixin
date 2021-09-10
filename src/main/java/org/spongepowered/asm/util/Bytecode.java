@@ -103,6 +103,17 @@ public final class Bytecode {
             return other == null || other.ordinal() <= this.ordinal();
         }
         
+        /**
+         * Get whether this visibility level represents a level which less than
+         * the supplied level
+         * 
+         * @param other level to compare to
+         * @return true if greater or equal
+         */
+        public boolean isLessThan(Visibility other) {
+            return other != null && this.ordinal() < other.ordinal();
+        }
+        
     }
     
     /**
@@ -659,6 +670,58 @@ public final class Bytecode {
         }
     }
     
+//    /**
+//     * Generate required APPEND frame nodes for the listed types and append them
+//     * to the supplied instruction list
+//     * 
+//     * @param insns Insnlist to append to
+//     * @param types frame types to append
+//     */
+//    public static void extendFrame(InsnList insns, Type[] types) {
+//        int offset = 0;
+//        Object[] locals = new Object[3];
+//        
+//        for (int index = 0; index < types.length; index++) {
+//            
+//            Type type = types[index];
+//            int size = type.getSize();
+//            if (offset + size <= 3) {
+//                if (type.getSort() < Type.ARRAY) {
+//                    locals[offset] = type.getSort();
+//                } else {
+//                    locals[offset] = type.getInternalName();
+//                }
+//                if (size > 1) {
+//                    locals[offset + 1] = null;
+//                }
+//                offset += size;
+//            } else {
+//                insns.add(new FrameNode(Opcodes.F_APPEND, offset, locals, 0, null));
+//                offset = 0;
+//            }
+//        }
+//        
+//        if (offset > 0) {
+//            insns.add(new FrameNode(Opcodes.F_APPEND, offset, locals, 0, null));
+//        }
+//    }
+//    
+//    /**
+//     * Generate required CHOP frame nodes for the listed types and append them
+//     * to the supplied insn list
+//     * 
+//     * @param insns Insnlist to append generated nodes to
+//     * @param types types to chop
+//     */
+//    public static void chopFrame(InsnList insns, Type[] types) {
+//        int size = Bytecode.getArgsSize(types);
+//        while (size > 0) {
+//            int chop = Math.min(size, 3);
+//            insns.add(new FrameNode(Opcodes.F_CHOP, chop, null, 0, null));
+//            size -= chop;
+//        }
+//    }
+
     /**
      * Get an array of Types from an array of classes.
      * 
@@ -1268,9 +1331,12 @@ public final class Bytecode {
         }
         
         // TODO Java 10
-//        dest.nestHostClassExperimental = source.nestHostClassExperimental;
-//        Bytecode.<String>clear(dest.nestMembersExperimental);
-//        dest.nestMembersExperimental = Bytecode.<String>merge(source.nestMembersExperimental, dest.nestMembersExperimental);
+//        if (MixinEnvironment.getCompatibilityLevel().supports(LanguageFeatures.NESTING)) {
+//            ClassNodeAdapter.setNestHostClass(dest, ClassNodeAdapter.getNestHostClass(source));
+//            Bytecode.<String>clear(ClassNodeAdapter.getNestMembers(dest));
+//            ClassNodeAdapter.setNestMembers(dest, Bytecode.<String>merge(ClassNodeAdapter.getNestMembers(source),
+//                    ClassNodeAdapter.getNestMembers(dest)));
+//        }
         
         Bytecode.merge(source, dest);
         

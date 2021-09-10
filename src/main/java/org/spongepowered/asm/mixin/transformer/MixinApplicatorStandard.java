@@ -28,8 +28,7 @@ import java.lang.annotation.Annotation;
 import java.util.*;
 import java.util.Map.Entry;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.spongepowered.asm.logging.ILogger;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -42,6 +41,7 @@ import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.MixinEnvironment.Option;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Proxy;
+import org.spongepowered.asm.mixin.extensibility.IActivityContext.IActivity;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -54,7 +54,6 @@ import org.spongepowered.asm.mixin.injection.selectors.ITargetSelector;
 import org.spongepowered.asm.mixin.injection.selectors.ITargetSelectorByName;
 import org.spongepowered.asm.mixin.injection.selectors.TargetSelector;
 import org.spongepowered.asm.mixin.throwables.MixinError;
-import org.spongepowered.asm.mixin.transformer.ActivityStack.Activity;
 import org.spongepowered.asm.mixin.transformer.ClassInfo.Field;
 import org.spongepowered.asm.mixin.transformer.ext.extensions.ExtensionClassExporter;
 import org.spongepowered.asm.mixin.transformer.meta.MixinMerged;
@@ -98,6 +97,7 @@ class MixinApplicatorStandard {
      * Passes the mixin applicator applies to each mixin
      */
     enum ApplicatorPass {
+
         /**
          * Main pass, mix in methods, fields, interfaces etc
          */
@@ -112,12 +112,14 @@ class MixinApplicatorStandard {
          * Apply injectors from previous pass 
          */
         INJECT
+
     }
     
     /**
      * Strategy for injecting initialiser insns
      */
     enum InitialiserInjectionMode {
+
         /**
          * Default mode, attempts to place initialisers after all other
          * competing initialisers in the target ctor
@@ -129,12 +131,14 @@ class MixinApplicatorStandard {
          * invocation 
          */
         SAFE
+
     }
     
     /**
      * Internal struct for representing a range
      */
     class Range {
+
         /**
          * Start of the range
          */
@@ -199,6 +203,7 @@ class MixinApplicatorStandard {
         public String toString() {
             return String.format("Range[%d-%d,%d,valid=%s)", this.start, this.end, this.marker, this.isValid());
         }
+
     }
     
     /**
@@ -220,7 +225,7 @@ class MixinApplicatorStandard {
     /**
      * Log more things
      */
-    protected final Logger logger = LogManager.getLogger("mixin");
+    protected final ILogger logger = MixinService.getService().getLogger("mixin");
     
     /**
      * Target class context 
@@ -245,7 +250,7 @@ class MixinApplicatorStandard {
     /**
      * Profiler 
      */
-    protected final Profiler profiler = MixinEnvironment.getProfiler();
+    protected final Profiler profiler = Profiler.getProfiler("mixin");
     
     /**
      * Audit trail (if available); 
@@ -305,8 +310,8 @@ class MixinApplicatorStandard {
         
         this.activities.clear();
         try {
-            Activity activity = this.activities.begin("PreApply Phase");
-            Activity preApplyActivity = this.activities.begin("Mixin");
+            IActivity activity = this.activities.begin("PreApply Phase");
+            IActivity preApplyActivity = this.activities.begin("Mixin");
             for (MixinTargetContext context : mixinContexts) {
                 preApplyActivity.next(context.toString());
                 (current = context).preApply(this.targetName, this.targetClass);
@@ -316,7 +321,7 @@ class MixinApplicatorStandard {
             for (ApplicatorPass pass : ApplicatorPass.values()) {
                 activity.next("%s Applicator Phase", pass);
                 Section timer = this.profiler.begin("pass", pass.name().toLowerCase(Locale.ROOT));
-                Activity applyActivity = this.activities.begin("Mixin");
+                IActivity applyActivity = this.activities.begin("Mixin");
                 for (Iterator<MixinTargetContext> iter = mixinContexts.iterator(); iter.hasNext();) {
                     current = iter.next();
                     applyActivity.next(current.toString());
@@ -335,7 +340,7 @@ class MixinApplicatorStandard {
             }
             
             activity.next("PostApply Phase");
-            Activity postApplyActivity = this.activities.begin("Mixin");
+            IActivity postApplyActivity = this.activities.begin("Mixin");
             for (Iterator<MixinTargetContext> iter = mixinContexts.iterator(); iter.hasNext();) {
                 current = iter.next();
                 postApplyActivity.next(current.toString());
@@ -368,7 +373,7 @@ class MixinApplicatorStandard {
      * @param mixin Mixin to apply
      */
     protected final void applyMixin(MixinTargetContext mixin, ApplicatorPass pass) {
-        Activity activity = this.activities.begin("Apply");
+        IActivity activity = this.activities.begin("Apply");
         switch (pass) {
             case MAIN:
                 activity.next("Apply Signature");
@@ -435,7 +440,11 @@ class MixinApplicatorStandard {
         if (mixin.shouldSetSourceFile()) {
             this.targetClass.sourceFile = mixin.getSourceFile();
         }
-        this.targetClass.version = Math.max(this.targetClass.version, mixin.getMinRequiredClassVersion());
+        
+        int requiredVersion = mixin.getMinRequiredClassVersion();
+        if ((requiredVersion & 0xFFFF) > (this.targetClass.version & 0xFFFF)) {
+            this.targetClass.version = requiredVersion;
+        }
     }
 
     /**
@@ -502,7 +511,7 @@ class MixinApplicatorStandard {
      * @param mixin mixin target context
      */
     protected void applyMethods(MixinTargetContext mixin) {
-        Activity activity = this.activities.begin("?");
+        IActivity activity = this.activities.begin("?");
         for (MethodNode shadow : mixin.getShadowMethods()) {
             activity.next("@Shadow %s:%s", shadow.desc, shadow.name);
             this.applyShadowMethod(mixin, shadow);
@@ -532,7 +541,7 @@ class MixinApplicatorStandard {
             this.mergeMethod(mixin, mixinMethod);
         } else if (Constants.CLINIT.equals(mixinMethod.name)) {
             // Class initialiser insns get appended
-            Activity activity = this.activities.begin("Merge CLINIT insns");
+            IActivity activity = this.activities.begin("Merge CLINIT insns");
             this.appendInsns(mixin, mixinMethod);
             activity.end();
         }
@@ -856,7 +865,7 @@ class MixinApplicatorStandard {
                     ctor = mixinMethod;
                 } else {
                     // Not an error condition, just weird
-                    this.logger.warn(String.format("Mixin %s has multiple constructors, %s was selected\n", mixin, ctor.desc));
+                    this.logger.warn("Mixin {} has multiple constructors, {} was selected\n", mixin, ctor.desc);
                 }
             }
         }

@@ -31,9 +31,8 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.spongepowered.asm.logging.Level;
+import org.spongepowered.asm.logging.ILogger;
 import org.spongepowered.asm.launch.MixinInitialisationError;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
@@ -52,6 +51,7 @@ import org.spongepowered.asm.mixin.injection.selectors.TargetSelector;
 import org.spongepowered.asm.mixin.refmap.IReferenceMapper;
 import org.spongepowered.asm.mixin.refmap.ReferenceMapper;
 import org.spongepowered.asm.mixin.refmap.RemappingReferenceMapper;
+import org.spongepowered.asm.mixin.transformer.ext.Extensions;
 import org.spongepowered.asm.mixin.transformer.throwables.InvalidMixinException;
 import org.spongepowered.asm.service.IMixinService;
 import org.spongepowered.asm.service.MixinService;
@@ -158,7 +158,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
     /**
      * Log even more things
      */
-    private final Logger logger = LogManager.getLogger("mixin");
+    private final ILogger logger = MixinService.getService().getLogger("mixin");
     
     /**
      * Map of mixin target classes to mixin infos
@@ -370,6 +370,22 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      * Track whether this mixin has been evaluated for selection yet 
      */
     private transient boolean visited = false;
+    
+    /**
+     * Compatibility level read from the config (or default if none specified)
+     */
+    private transient CompatibilityLevel compatibilityLevel = CompatibilityLevel.DEFAULT;
+    
+    /**
+     * Only emit the compatibility level warning for any increase in the class
+     * version, track warned level here 
+     */
+    private transient int warnedClassVersion = 0;
+
+    /**
+     * Service decorations on this config
+     */
+    private transient Map<String, Object> decorations;
 
     /**
      * Spawn via GSON, no public ctor for you 
@@ -397,6 +413,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         
         // If no parent, initialise config options
         this.env = this.parseSelector(this.selector, fallbackEnvironment);
+        this.verboseLogging |= this.env.getOption(Option.DEBUG_VERBOSE);
         this.required = this.requiredValue != null && this.requiredValue.booleanValue() && !this.env.getOption(Option.IGNORE_REQUIRED);
         this.initPriority(IMixinConfig.DEFAULT_PRIORITY, IMixinConfig.DEFAULT_PRIORITY);
         
@@ -440,6 +457,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         }
         
         this.env = this.parseSelector(this.selector, this.parent.env);
+        this.verboseLogging |= this.env.getOption(Option.DEBUG_VERBOSE);
         this.required = this.requiredValue == null ? this.parent.required
                 : this.requiredValue.booleanValue() && !this.env.getOption(Option.IGNORE_REQUIRED);
 
@@ -486,31 +504,80 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
     
     @SuppressWarnings("deprecation")
     private void initCompatibilityLevel() {
+        this.compatibilityLevel = MixinEnvironment.getCompatibilityLevel();
+        
         if (this.compatibility == null) {
             return;
         }
         
-        CompatibilityLevel level = CompatibilityLevel.valueOf(this.compatibility.trim().toUpperCase(Locale.ROOT));
-        CompatibilityLevel current = MixinEnvironment.getCompatibilityLevel();
+        String strCompatibility = this.compatibility.trim().toUpperCase(Locale.ROOT);
+        try {
+            this.compatibilityLevel = CompatibilityLevel.valueOf(strCompatibility);
+        } catch (IllegalArgumentException ex) {
+            throw new MixinInitialisationError(String.format("Mixin config %s specifies compatibility level %s which is not recognised",
+                    this.name, strCompatibility));
+        }
         
-        if (level == current) {
+        CompatibilityLevel currentLevel = MixinEnvironment.getCompatibilityLevel();
+        if (this.compatibilityLevel == currentLevel) {
             return;
         }
         
         // Current level is higher than required but too new to support it
-        if (current.isAtLeast(level)) {
-            if (!current.canSupport(level)) {
-                throw new MixinInitialisationError("Mixin config " + this.name + " requires compatibility level " + level + " which is too old");
-            }
+        if (currentLevel.isAtLeast(this.compatibilityLevel) && !currentLevel.canSupport(this.compatibilityLevel)) {
+            throw new MixinInitialisationError(String.format("Mixin config %s requires compatibility level %s which is too old",
+                    this.name, this.compatibilityLevel));
         }
         
         // Current level is lower than required but current level prohibits elevation
-        if (!current.canElevateTo(level)) {
-            throw new MixinInitialisationError("Mixin config " + this.name + " requires compatibility level " + level + " which is prohibited by "
-                    + current);
+        if (!currentLevel.canElevateTo(this.compatibilityLevel)) {
+            throw new MixinInitialisationError(String.format("Mixin config %s requires compatibility level %s which is prohibited by %s",
+                    this.name, this.compatibilityLevel, currentLevel));
+        }
+
+        CompatibilityLevel minCompatibilityLevel = MixinEnvironment.getMinCompatibilityLevel();
+        if (this.compatibilityLevel.isLessThan(minCompatibilityLevel)) {
+            this.logger.log(this.verboseLogging ? Level.INFO : Level.DEBUG,
+                    "Compatibility level {} specified by {} is lower than the default level supported by the current mixin service ({}).",
+                    this.compatibilityLevel, this, minCompatibilityLevel);
+        }
+
+        // Required level is higher than highest version we support, this possibly
+        // means that a shaded mixin dependency has been usurped by an old version,
+        // or the mixin author is trying to elevate the compatibility level beyond
+        // the versions currently supported
+        if (CompatibilityLevel.MAX_SUPPORTED.isLessThan(this.compatibilityLevel)) {
+            this.logger.log(this.verboseLogging ? Level.WARN : Level.DEBUG,
+                    "Compatibility level {} specified by {} is higher than the maximum level supported by this version of mixin ({}).",
+                    this.compatibilityLevel, this, CompatibilityLevel.MAX_SUPPORTED);
         }
         
-        MixinEnvironment.setCompatibilityLevel(level);
+        MixinEnvironment.setCompatibilityLevel(this.compatibilityLevel);
+    }
+
+    /**
+     * Called by MixinTargetContext when class version is elevated, allows us to
+     * warn devs (or end-users with verbose turned on, for whatever reason) that
+     * the current compatibility level is too low for the classes being
+     * processed. The warning is only emitted at WARN for each new class version
+     * and at DEBUG thereafter.
+     * 
+     * <p>The logic here is that we only really care about supported class
+     * features, but a version of mixin which doesn't actually support newer
+     * features may well be able to operate with classes *compiled* with a newer
+     * JDK, but we don't actually know that for sure).
+     */
+    void checkCompatibilityLevel(MixinInfo mixin, int majorVersion, int minorVersion) {
+        if (majorVersion <= this.compatibilityLevel.getClassMajorVersion()) {
+            return;
+        }
+        
+        Level logLevel = this.verboseLogging && majorVersion > this.warnedClassVersion ? Level.WARN : Level.DEBUG;
+        String message = majorVersion > CompatibilityLevel.MAX_SUPPORTED.getClassMajorVersion()
+                ? "the current version of Mixin" : "the declared compatibility level";
+        this.warnedClassVersion = majorVersion;
+        this.logger.log(logLevel, "{}: Class version {} required is higher than the class version supported by {} ({} supports class version {})",
+                mixin, majorVersion, message, this.compatibilityLevel, this.compatibilityLevel.getClassMajorVersion());
     }
 
     // AMS - temp
@@ -637,7 +704,11 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      */
     void onSelect() {
         this.plugin = new PluginHandle(this, this.service, this.pluginClassName);
-        this.plugin.onLoad(this.mixinPackage);
+        this.plugin.onLoad(Strings.nullToEmpty(this.mixinPackage));
+        
+        if (Strings.isNullOrEmpty(this.mixinPackage)) {
+            return;
+        }
 
         if (!this.mixinPackage.endsWith(".") && !this.mixinPackage.isEmpty()) {
             this.mixinPackage += ".";
@@ -655,7 +726,6 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         }
         
         this.refMapper = ReferenceMapper.read(this.refMapperConfig);
-        this.verboseLogging |= this.env.getOption(Option.DEBUG_VERBOSE);
         
         if (!suppressRefMapWarning && this.refMapper.isDefault() && !this.env.getOption(Option.DISABLE_REFMAP)) {
             this.logger.warn("Reference map '{}' for {} could not be read. If this is a development environment you can ignore this message",
@@ -670,7 +740,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
             String wrapperName = this.mixinPackage + this.refMapperWrapper;
             try {
                 @SuppressWarnings("unchecked")
-                Class<IReferenceMapper> wrapperCls = (Class<IReferenceMapper>) Class.forName(wrapperName);
+                Class<IReferenceMapper> wrapperCls = (Class<IReferenceMapper>) this.service.getClassProvider().findClass(wrapperName, true);
                 Constructor<IReferenceMapper> ctr = wrapperCls.getConstructor(MixinEnvironment.class, IReferenceMapper.class);
                 this.refMapper = ctr.newInstance(this.env, this.refMapper);
             } catch (ClassNotFoundException e) {
@@ -696,20 +766,20 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      * either the <em>hasMixinsFor()</em> or <em>getMixinsFor()</em> methods.
      * </p>
      */
-    void prepare() {
+    void prepare(Extensions extensions) {
         if (this.prepared) {
             return;
         }
         this.prepared = true;
         
-        this.prepareMixins(this.mixinClasses, false);
+        this.prepareMixins("mixins", this.mixinClasses, false, extensions);
         
         switch (this.env.getSide()) {
             case CLIENT:
-                this.prepareMixins(this.mixinClassesClient, false);
+                this.prepareMixins("client", this.mixinClassesClient, false, extensions);
                 break;
             case SERVER:
-                this.prepareMixins(this.mixinClassesServer, false);
+                this.prepareMixins("server", this.mixinClassesServer, false, extensions);
                 break;
             case UNKNOWN:
                 //$FALL-THROUGH$
@@ -719,10 +789,10 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         }
     }
     
-    void postInitialise() {
+    void postInitialise(Extensions extensions) {
         if (this.plugin != null) {
             List<String> pluginMixins = this.plugin.getMixins();
-            this.prepareMixins(pluginMixins, true);
+            this.prepareMixins("companion plugin", pluginMixins, true, extensions);
         }
         
         for (Iterator<MixinInfo> iter = this.mixins.iterator(); iter.hasNext();) {
@@ -754,8 +824,16 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         }
     }
 
-    private void prepareMixins(List<String> mixinClasses, boolean ignorePlugin) {
+    private void prepareMixins(String collectionName, List<String> mixinClasses, boolean ignorePlugin, Extensions extensions) {
         if (mixinClasses == null) {
+            return;
+        }
+        
+        if (Strings.isNullOrEmpty(this.mixinPackage)) {
+            if (mixinClasses.size() > 0) {
+                this.logger.error("{} declares mixin classes in {} but does not specify a package, {} orphaned mixins will not be loaded: {}",
+                        this, collectionName, mixinClasses.size(), mixinClasses);
+            }
             return;
         }
         
@@ -769,7 +847,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
             MixinInfo mixin = null;
             
             try {
-                this.pendingMixins.add(mixin = new MixinInfo(this.service, this, mixinClass, this.plugin, ignorePlugin));
+                this.pendingMixins.add(mixin = new MixinInfo(this.service, this, mixinClass, this.plugin, ignorePlugin, extensions));
                 MixinConfig.globalMixinList.add(fqMixinClass);
             } catch (InvalidMixinException ex) {
                 if (this.required) {
@@ -862,7 +940,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      */
     @Override
     public String getMixinPackage() {
-        return this.mixinPackage;
+        return Strings.nullToEmpty(this.mixinPackage);
     }
     
     /**
@@ -967,6 +1045,10 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public List<String> getClasses() {
+        if (Strings.isNullOrEmpty(this.mixinPackage)) {
+            return Collections.<String>emptyList();
+        }
+
         Builder<String> list = ImmutableList.<String>builder();
         for (List<String> classes : new List[] { this.mixinClasses, this.mixinClassesClient, this.mixinClassesServer} ) {
             if (classes != null) {
@@ -1012,6 +1094,14 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
     public IMixinConfigPlugin getPlugin() {
         return this.plugin.get();
     }
+    
+    /**
+     * Returns a mutable view of the targets set, used to pass the targets to
+     * config plugins 
+     */
+    public Set<String> getTargetsSet() {
+        return this.mixinMapping.keySet();
+    }
 
     /* (non-Javadoc)
      * @see org.spongepowered.asm.mixin.transformer.IMixinConfig#getTargets()
@@ -1028,6 +1118,50 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         return Collections.<String>unmodifiableSet(this.unhandledTargets);
     }
     
+    /**
+     * Decorate this config with arbitrary metadata for debugging or
+     * compatibility purposes
+     * 
+     * @param key meta key
+     * @param value meta value
+     * @param <V> value type
+     * @throws IllegalArgumentException if the specified key exists already
+     */
+    @Override
+    public <V> void decorate(String key, V value) {
+        if (this.decorations == null) {
+            this.decorations = new HashMap<String, Object>();
+        }
+        if (this.decorations.containsKey(key)) {
+            throw new IllegalArgumentException(String.format("Decoration with key '%s' already exists on config %s", key, this));
+        }
+        this.decorations.put(key, value);
+    }
+    
+    /**
+     * Get whether this node is decorated with the specified key
+     * 
+     * @param key meta key
+     * @return true if the specified decoration exists
+     */
+    @Override
+    public boolean hasDecoration(String key) {
+        return this.decorations != null && this.decorations.get(key) != null;
+    }
+    
+    /**
+     * Get the specified decoration
+     * 
+     * @param key meta key
+     * @param <V> value type
+     * @return decoration value or null if absent
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public <V> V getDecoration(String key) {
+        return (V) (this.decorations == null ? null : this.decorations.get(key));
+    }
+
     /**
      * Get the logging level for this config
      */
@@ -1050,7 +1184,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      *      package
      */
     public boolean packageMatch(String className) {
-        return !this.mixinPackage.isEmpty() && className.startsWith(this.mixinPackage);
+        return !Strings.isNullOrEmpty(this.mixinPackage) && className.startsWith(this.mixinPackage);
     }
     
     /**

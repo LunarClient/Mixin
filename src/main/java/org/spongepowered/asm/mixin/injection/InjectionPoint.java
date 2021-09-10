@@ -41,7 +41,6 @@ import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 
-import org.apache.logging.log4j.LogManager;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.InsnList;
@@ -861,7 +860,7 @@ public abstract class InjectionPoint {
                 by, context, method.name, limitBreached, allowed, advice);
         
         if (err == ShiftByViolationBehaviour.WARN && allowed < InjectionPoint.MAX_ALLOWED_SHIFT_BY) {
-            LogManager.getLogger("mixin").warn(message);
+            MixinService.getService().getLogger("mixin").warn(message);
             return;
         }
 
@@ -881,6 +880,7 @@ public abstract class InjectionPoint {
      */
     @Deprecated
     public static void register(Class<? extends InjectionPoint> type) {
+        InjectionPoint.register(type, null);
     }
         
     /**
@@ -903,10 +903,10 @@ public abstract class InjectionPoint {
         
         Class<? extends InjectionPoint> existing = InjectionPoint.types.get(code.value());
         if (existing != null && !existing.equals(type)) {
-            LogManager.getLogger("mixin").debug("Overriding InjectionPoint {} with {} (previously {})", code.value(), type.getName(),
+            MixinService.getService().getLogger("mixin").debug("Overriding InjectionPoint {} with {} (previously {})", code.value(), type.getName(),
                     existing.getName());
         } else if (Strings.isNullOrEmpty(namespace)) {
-            LogManager.getLogger("mixin").warn("Registration of InjectionPoint {} with {} without specifying namespace is deprecated.",
+            MixinService.getService().getLogger("mixin").warn("Registration of InjectionPoint {} with {} without specifying namespace is deprecated.",
                     code.value(), type.getName());
         }
         

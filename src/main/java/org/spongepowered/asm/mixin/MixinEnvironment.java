@@ -33,9 +33,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.spongepowered.asm.logging.Level;
+import org.spongepowered.asm.logging.ILogger;
 import org.spongepowered.asm.launch.GlobalProperties;
 import org.spongepowered.asm.launch.GlobalProperties.Keys;
 import org.spongepowered.asm.launch.MixinBootstrap;
@@ -55,6 +54,7 @@ import org.spongepowered.asm.util.Constants;
 import org.spongepowered.asm.util.IConsumer;
 import org.spongepowered.asm.util.ITokenProvider;
 import org.spongepowered.asm.util.JavaVersion;
+import org.spongepowered.asm.util.LanguageFeatures;
 import org.spongepowered.asm.util.PrettyPrinter;
 import org.spongepowered.asm.util.asm.ASM;
 import org.spongepowered.asm.util.perf.Profiler;
@@ -590,167 +590,197 @@ public final class MixinEnvironment implements ITokenProvider {
     public static enum CompatibilityLevel {
         
         /**
-         * Java 6 and above
+         * Java 6 (1.6) or above is required
          */
         JAVA_6(6, Opcodes.V1_6, 0),
         
         /**
-         * Java 7 and above
+         * Java 7 (1.7) or above is required
          */
         JAVA_7(7, Opcodes.V1_7, 0) {
 
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 1.7;
+                return JavaVersion.current() >= JavaVersion.JAVA_7;
             }
             
         },
         
         /**
-         * Java 8 and above
+         * Java 8 (1.8) or above is required
          */
-        JAVA_8(8, Opcodes.V1_8, LanguageFeature.METHODS_IN_INTERFACES) {
+        JAVA_8(8, Opcodes.V1_8, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES) {
 
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 1.8;
+                return JavaVersion.current() >= JavaVersion.JAVA_8;
             }
             
         },
         
         /**
-         * Java 9 and above
+         * Java 9 or above is required
          */
-        JAVA_9(9, Opcodes.V9, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES) {
+        JAVA_9(9, Opcodes.V9, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES) {
             
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 9.0;
-            }
-            
-        },
-        
-        /**
-         * Java 10 and above
-         */
-        JAVA_10(10, Opcodes.V10, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES) {
-            
-            @Override
-            boolean isSupported() {
-                return JavaVersion.current() >= 10.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_9 && ASM.isAtLeastVersion(6);
             }
             
         },
         
         /**
-         * Java 11 and above
+         * Java 10 or above is required
          */
-        JAVA_11(11, Opcodes.V11, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES
-                | LanguageFeature.NESTING | LanguageFeature.DYNAMIC_CONSTANTS) {
+        JAVA_10(10, Opcodes.V10, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES) {
             
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 11.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_10 && ASM.isAtLeastVersion(6, 1);
+            }
+            
+        },
+        
+        /**
+         * Java 11 or above is required
+         */
+        JAVA_11(11, Opcodes.V11, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS) {
+            
+            @Override
+            boolean isSupported() {
+                return JavaVersion.current() >= JavaVersion.JAVA_11 && ASM.isAtLeastVersion(7);
             }
             
         },
 
         /**
-         * Java 12 and above
+         * Java 12 or above is required
          */
-        JAVA_12(12, Opcodes.V12, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES
-                | LanguageFeature.NESTING | LanguageFeature.DYNAMIC_CONSTANTS) {
-
+        JAVA_12(12, Opcodes.V12, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS) {
+            
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 12.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_12 && ASM.isAtLeastVersion(7);
             }
-
+            
         },
-
+        
         /**
-         * Java 13 and above
+         * Java 13 or above is required
          */
-        JAVA_13(13, Opcodes.V13, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES
-                | LanguageFeature.NESTING | LanguageFeature.DYNAMIC_CONSTANTS) {
-
+        JAVA_13(13, Opcodes.V13, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS) {
+            
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 13.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_13 && ASM.isAtLeastVersion(7);
             }
-
+            
         },
-
+        
         /**
-         * Java 14 and above
+         * Java 14 or above is required. Records are a preview feature in this
+         * release.
          */
-        JAVA_14(14, Opcodes.V14, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES
-                | LanguageFeature.NESTING | LanguageFeature.DYNAMIC_CONSTANTS) {
-
+        JAVA_14(14, Opcodes.V14, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS
+                | LanguageFeatures.RECORDS) {
+            
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 14.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_14 && ASM.isAtLeastVersion(8);
             }
-
+            
         },
-
+        
         /**
-         * Java 15 and above
+         * Java 15 or above is required. Records and sealed classes are preview
+         * features in this release.
          */
-        JAVA_15(15, Opcodes.V15, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES
-                | LanguageFeature.NESTING | LanguageFeature.DYNAMIC_CONSTANTS) {
-
+        JAVA_15(15, Opcodes.V15, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS
+                | LanguageFeatures.RECORDS | LanguageFeatures.SEALED_CLASSES) {
+            
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 15.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_15 && ASM.isAtLeastVersion(9);
             }
-
+            
         },
-
+        
         /**
-         * Java 16 and above
+         * Java 16 or above is required
          */
-        JAVA_16(16, Opcodes.V16, LanguageFeature.METHODS_IN_INTERFACES | LanguageFeature.PRIVATE_METHODS_IN_INTERFACES
-                | LanguageFeature.NESTING | LanguageFeature.DYNAMIC_CONSTANTS) {
-
+        JAVA_16(16, Opcodes.V16, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS
+                | LanguageFeatures.RECORDS | LanguageFeatures.SEALED_CLASSES) {
+            
             @Override
             boolean isSupported() {
-                return JavaVersion.current() >= 16.0;
+                return JavaVersion.current() >= JavaVersion.JAVA_16 && ASM.isAtLeastVersion(9);
             }
-
+            
+        },
+        
+        /**
+         * Java 17 or above is required
+         */
+        JAVA_17(17, Opcodes.V17, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS
+                | LanguageFeatures.RECORDS | LanguageFeatures.SEALED_CLASSES) {
+            
+            @Override
+            boolean isSupported() {
+                return JavaVersion.current() >= JavaVersion.JAVA_17 && ASM.isAtLeastVersion(9, 1);
+            }
+            
+        },
+        
+        /**
+         * Java 18 or above is required
+         */
+        JAVA_18(18, Opcodes.V18, LanguageFeatures.METHODS_IN_INTERFACES | LanguageFeatures.PRIVATE_SYNTHETIC_METHODS_IN_INTERFACES
+                | LanguageFeatures.PRIVATE_METHODS_IN_INTERFACES | LanguageFeatures.NESTING | LanguageFeatures.DYNAMIC_CONSTANTS
+                | LanguageFeatures.RECORDS | LanguageFeatures.SEALED_CLASSES) {
+            
+            @Override
+            boolean isSupported() {
+                return JavaVersion.current() >= JavaVersion.JAVA_18 && ASM.isAtLeastVersion(9, 2);
+            }
+            
         };
-        
-        /**
-         * Bitmask values for language features supported
-         */
-        public static class LanguageFeature {
-            
-            /**
-             * Language version supports methods in interfaces
-             */
-            public static final int METHODS_IN_INTERFACES = 1;
-            
-            /**
-             * Language version supports private methods in interfaces
-             */
-            public static final int PRIVATE_METHODS_IN_INTERFACES = 2;
-            
-            /**
-             * Native nesting
-             */
-            public static final int NESTING = 4;
-            
-            /**
-             * Dynamic constants
-             */
-            public static final int DYNAMIC_CONSTANTS = 8;
-
-        }
         
         /**
          * Default compatibility level to use if not specified by the service 
          */
         public static CompatibilityLevel DEFAULT = CompatibilityLevel.JAVA_6;
+        
+        /**
+         * Maximum compatibility level actually supported. Other compatibility
+         * levels might exist but we don't actually have any internal code in
+         * place which supports those features. This is mainly used to indicate
+         * that mixin classes compiled with newer JDKs might have bytecode-level
+         * class features that this version of mixin doesn't understand, even
+         * when the current ASM or JRE do.
+         * 
+         * <p>This is particularly important for the case where a config
+         * declares a higher version (eg. JAVA_14) which has been added to the 
+         * enum but no code actually exists within Mixin as a library to handle
+         * language features from that version. In other words adding values to
+         * this enum doesn't magically add support for language features, and
+         * this field should point to the highest <em>known <b>supported</b>
+         * </em> version regardless of other <em>known</em> versions.</p>
+         * 
+         * <p>This comment mainly added to avoid stuff in the future like
+         * PR #500 which demonstrates that the nature of compatibility levels
+         * in mixin are not understood that well.</p>
+         */
+        public static CompatibilityLevel MAX_SUPPORTED = CompatibilityLevel.JAVA_13;
         
         private final int ver;
         
@@ -776,11 +806,35 @@ public final class MixinEnvironment implements ITokenProvider {
         
         /**
          * Class version expected at this compatibility level
+         * 
+         * @deprecated Use getClassVersion
          */
+        @Deprecated
         public int classVersion() {
             return this.classVersion;
         }
         
+        /**
+         * Class version expected at this compatibility level
+         */
+        public int getClassVersion() {
+            return this.classVersion;
+        }
+        
+        /**
+         * Get the major class version expected at this compatibility level
+         */
+        public int getClassMajorVersion() {
+            return this.classVersion & 0xFFFF;
+        }
+        
+        /**
+         * Get all supported language features
+         */
+        public int getLanguageFeatures() {
+            return this.languageFeatures;
+        }
+
         /**
          * Get whether this environment supports non-abstract methods in
          * interfaces, true in Java 1.8 and above
@@ -789,18 +843,18 @@ public final class MixinEnvironment implements ITokenProvider {
          */
         @Deprecated
         public boolean supportsMethodsInInterfaces() {
-            return (this.languageFeatures & LanguageFeature.METHODS_IN_INTERFACES) != 0;
+            return (this.languageFeatures & LanguageFeatures.METHODS_IN_INTERFACES) != 0;
         }
         
         /**
-         * Get whether the specified {@link LanguageFeature} is supported by
+         * Get whether the specified {@link LanguageFeatures} is supported by
          * this runtime.
          * 
-         * @param languageFeature language feature (or features) to check
+         * @param languageFeatures language feature (or features) to check
          * @return true if all specified language features are supported
          */
-        public boolean supports(int languageFeature) {
-            return (this.languageFeatures & languageFeature) != 0;
+        public boolean supports(int languageFeatures) {
+            return (this.languageFeatures & languageFeatures) == languageFeatures;
         }
         
         /**
@@ -850,17 +904,51 @@ public final class MixinEnvironment implements ITokenProvider {
             
             return level.canElevateTo(this);
         }
+        
+        /**
+         * Return the minimum language level required to support the specified
+         * language feature(s). Returns <tt>null</tt> if no compatibility level
+         * available can support the requested language features.
+         * 
+         * @param languageFeatures Language feature(s) to check for
+         * @return Lowest compatibility level which supports the requested
+         *      language feature, or null if no levels support the requested
+         *      feature 
+         */
+        public static CompatibilityLevel requiredFor(int languageFeatures) {
+            for (CompatibilityLevel level : CompatibilityLevel.values()) {
+                if (level.supports(languageFeatures)) {
+                    return level;
+                }
+            }
+            return null;
+        }
 
         static String getSupportedVersions() {
             StringBuilder sb = new StringBuilder();
             boolean comma = false;
+            int rangeStart = 0, rangeEnd = 0;
             for (CompatibilityLevel level : CompatibilityLevel.values()) {
                 if (level.isSupported()) {
-                    if (comma) {
-                        sb.append(", ");
+                    if (level.ver == rangeEnd + 1) {
+                        rangeEnd = level.ver;
+                    } else {
+                        if (rangeStart > 0) {
+                            sb.append(comma ? "," : "").append(rangeStart);
+                            if (rangeEnd > rangeStart) {
+                                sb.append(rangeEnd > rangeStart + 1 ? '-' : ',').append(rangeEnd);
+                            }
+                            comma = true;
+                            rangeStart = rangeEnd = level.ver;
+                        }
+                        rangeStart = rangeEnd = level.ver;
                     }
-                    sb.append(level.ver);
-                    comma = true;
+                }
+            }
+            if (rangeStart > 0) {
+                sb.append(comma ? "," : "").append(rangeStart);
+                if (rangeEnd > rangeStart) {
+                    sb.append(rangeEnd > rangeStart + 1 ? '-' : ',').append(rangeEnd);
                 }
             }
             return sb.toString();
@@ -945,12 +1033,7 @@ public final class MixinEnvironment implements ITokenProvider {
     /**
      * Logger 
      */
-    private static final Logger logger = LogManager.getLogger("mixin");
-    
-    /**
-     * Performance profiler 
-     */
-    private static final Profiler profiler = new Profiler();
+    private static final ILogger logger = MixinService.getService().getLogger("mixin");
 
     /**
      * Active transformer
@@ -1044,12 +1127,14 @@ public final class MixinEnvironment implements ITokenProvider {
             printer.add("SpongePowered MIXIN%s", verbose ? " (Verbose debugging enabled)" : "").centre().hr();
             printer.kv("Code source", codeSource);
             printer.kv("Internal Version", version);
-            printer.kv("Java Versions Supported", CompatibilityLevel.getSupportedVersions());
-            printer.kv("Current Compatibility Level", MixinEnvironment.getCompatibilityLevel());
-            printer.kv("Detected ASM API Version", ASM.getApiVersionString()).hr();
+            printer.kv("Java Version", "%s (supports compatibility %s)", JavaVersion.current(), CompatibilityLevel.getSupportedVersions());
+            printer.kv("Default Compatibility Level", MixinEnvironment.getCompatibilityLevel());
+            printer.kv("Detected ASM Version", ASM.getVersionString());
+            printer.kv("Detected ASM Supports Java", ASM.getClassVersionString()).hr();
             printer.kv("Service Name", serviceName);
             printer.kv("Mixin Service Class", this.service.getClass().getName());
-            printer.kv("Global Property Service Class", MixinService.getGlobalPropertyService().getClass().getName()).hr();
+            printer.kv("Global Property Service Class", MixinService.getGlobalPropertyService().getClass().getName());
+            printer.kv("Logger Adapter Type", MixinService.getService().getLogger("mixin").getType()).hr();
             for (Option option : Option.values()) {
                 StringBuilder indent = new StringBuilder();
                 for (int i = 0; i < option.depth; i++) {
@@ -1399,7 +1484,7 @@ public final class MixinEnvironment implements ITokenProvider {
         if (MixinEnvironment.currentPhase == Phase.NOT_INITIALISED) {
             MixinEnvironment.currentPhase = phase;
             MixinEnvironment env = MixinEnvironment.getEnvironment(phase);
-            MixinEnvironment.getProfiler().setActive(env.getOption(Option.DEBUG_PROFILER));
+            Profiler.setActive(env.getOption(Option.DEBUG_PROFILER));
             
             // AMS - Temp wiring to avoid merging multiphase
             IMixinService service = MixinService.getService();
@@ -1456,7 +1541,11 @@ public final class MixinEnvironment implements ITokenProvider {
         return MixinEnvironment.compatibility;
     }
     
-    private static CompatibilityLevel getMinCompatibilityLevel() {
+    /**
+     * Get the minimum (default) compatibility level supported by the current
+     * service
+     */
+    public static CompatibilityLevel getMinCompatibilityLevel() {
         CompatibilityLevel minLevel = MixinService.getService().getMinCompatibilityLevel();
         return minLevel == null ? CompatibilityLevel.DEFAULT : minLevel;
     }
@@ -1478,7 +1567,10 @@ public final class MixinEnvironment implements ITokenProvider {
         CompatibilityLevel currentLevel = MixinEnvironment.getCompatibilityLevel();
         if (level != currentLevel && level.isAtLeast(currentLevel)) {
             if (!level.isSupported()) {
-                throw new IllegalArgumentException("The requested compatibility level " + level + " could not be set. Level is not supported");
+                throw new IllegalArgumentException(String.format(
+                    "The requested compatibility level %s could not be set. Level is not supported by the active JRE or ASM version (Java %s, %s)",
+                    level, JavaVersion.current(), ASM.getVersionString()
+                ));
             }
 
             IMixinService service = MixinService.getService();
@@ -1497,9 +1589,11 @@ public final class MixinEnvironment implements ITokenProvider {
      * Get the performance profiler
      * 
      * @return profiler
+     * @deprecated use Profiler.getProfiler("mixin")
      */
+    @Deprecated
     public static Profiler getProfiler() {
-        return MixinEnvironment.profiler;
+        return Profiler.getProfiler("mixin");
     }
     
     /**

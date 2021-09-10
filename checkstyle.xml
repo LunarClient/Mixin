@@ -11,6 +11,9 @@
 <module name="Checker">
   <property name="severity" value="warning"/>
   <property name="charset" value="UTF-8"/>
+  <module name="BeforeExecutionExclusionFileFilter">
+    <property name="fileNamePattern" value="module\-info\.java$"/>
+  </module>
   <module name="TreeWalker">
     <module name="OuterTypeFilename"/>
     <module name="IllegalTokenText">
@@ -90,7 +93,7 @@
     </module>
     <module name="JavadocMethod">
       <metadata name="net.sf.eclipsecs.core.comment" value="Package members"/>
-      <property name="scope" value="package"/>
+      <property name="accessModifiers" value="package"/>
       <property name="allowMissingParamTags" value="true"/>
       <property name="allowMissingReturnTag" value="true"/>
       <property name="tokens" value="METHOD_DEF"/>
@@ -100,8 +103,7 @@
     </module>
     <module name="JavadocMethod">
       <metadata name="net.sf.eclipsecs.core.comment" value="Public members"/>
-      <property name="scope" value="public"/>
-      <property name="excludeScope" value="package"/>
+      <property name="accessModifiers" value="public"/>
       <property name="allowMissingReturnTag" value="true"/>
       <property name="tokens" value="METHOD_DEF"/>
     </module>

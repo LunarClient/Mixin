@@ -25,10 +25,12 @@
 package org.spongepowered.asm.service.modlauncher;
 
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.util.Collection;
 
 import org.spongepowered.asm.launch.IClassProcessor;
 import org.spongepowered.asm.launch.platform.container.ContainerHandleModLauncher;
+import org.spongepowered.asm.logging.ILogger;
 import org.spongepowered.asm.mixin.MixinEnvironment.CompatibilityLevel;
 import org.spongepowered.asm.mixin.MixinEnvironment.Phase;
 import org.spongepowered.asm.mixin.transformer.IMixinTransformerFactory;
@@ -54,7 +56,20 @@ public class MixinServiceModLauncher extends MixinServiceAbstract {
     /**
      * Specification version to check for at startup
      */
-    private static final String MODLAUNCHER_SPECIFICATION_VERSION = "4.0";
+    private static final String MODLAUNCHER_4_SPECIFICATION_VERSION = "4.0";
+    
+    /**
+     * Specification version for ModLauncher versions &gt;= 9.0.4, yes this is
+     * not a typo, the specification version (API version) is out of step with
+     * the artefact version in a few previous cases (ML6 has specification
+     * version 5.0 for example, and ML7 and ML8 both had specification version
+     * 7.0).
+     */
+    private static final String MODLAUNCHER_9_SPECIFICATION_VERSION = "8.0";
+    
+    private static final String CONTAINER_PACKAGE = MixinServiceAbstract.LAUNCH_PACKAGE + "platform.container.";
+    private static final String MODLAUNCHER_4_ROOT_CONTAINER_CLASS = MixinServiceModLauncher.CONTAINER_PACKAGE + "ContainerHandleModLauncher";
+    private static final String MODLAUNCHER_9_ROOT_CONTAINER_CLASS = MixinServiceModLauncher.CONTAINER_PACKAGE + "ContainerHandleModLauncherEx";
 
     /**
      * Class provider, either uses hacky internals or provided service
@@ -94,7 +109,22 @@ public class MixinServiceModLauncher extends MixinServiceAbstract {
     /**
      * Root container
      */
-    private ContainerHandleModLauncher rootContainer = new ContainerHandleModLauncher(this.getName());
+    private ContainerHandleModLauncher rootContainer;
+
+    /**
+     * Minimum compatibility level
+     */
+    private CompatibilityLevel minCompatibilityLevel = CompatibilityLevel.JAVA_8;
+    
+    public MixinServiceModLauncher() {
+        final Package pkg = ITransformationService.class.getPackage();
+        if (pkg.isCompatibleWith(MixinServiceModLauncher.MODLAUNCHER_9_SPECIFICATION_VERSION)) {
+            this.createRootContainer(MixinServiceModLauncher.MODLAUNCHER_9_ROOT_CONTAINER_CLASS);
+            this.minCompatibilityLevel = CompatibilityLevel.JAVA_16;
+        } else {
+            this.createRootContainer(MixinServiceModLauncher.MODLAUNCHER_4_ROOT_CONTAINER_CLASS);
+        }
+    }
     
     /**
      * Begin init
@@ -109,6 +139,16 @@ public class MixinServiceModLauncher extends MixinServiceAbstract {
         this.bytecodeProvider = bytecodeProvider;
     }
     
+    private void createRootContainer(String rootContainerClassName) {
+        try {
+            Class<?> clRootContainer = this.getClassProvider().findClass(rootContainerClassName);
+            Constructor<?> ctor = clRootContainer.getDeclaredConstructor(String.class);
+            this.rootContainer = (ContainerHandleModLauncher)ctor.newInstance(this.getName());
+        } catch (ReflectiveOperationException ex) {
+            ex.printStackTrace();
+        }
+    }
+
     /**
      * Lifecycle event
      */
@@ -146,7 +186,12 @@ public class MixinServiceModLauncher extends MixinServiceAbstract {
      */
     @Override
     public CompatibilityLevel getMinCompatibilityLevel() {
-        return CompatibilityLevel.JAVA_8;
+        return this.minCompatibilityLevel;
+    }
+    
+    @Override
+    protected ILogger createLogger(String name) {
+        return new LoggerAdapterLog4j2(name);
     }
 
     /* (non-Javadoc)
@@ -157,7 +202,7 @@ public class MixinServiceModLauncher extends MixinServiceAbstract {
         try {
             Launcher.INSTANCE.hashCode();
             final Package pkg = ITransformationService.class.getPackage();
-            if (!pkg.isCompatibleWith(MixinServiceModLauncher.MODLAUNCHER_SPECIFICATION_VERSION)) {
+            if (!pkg.isCompatibleWith(MixinServiceModLauncher.MODLAUNCHER_4_SPECIFICATION_VERSION)) {
                 return false;
             }
         } catch (Throwable th) {
