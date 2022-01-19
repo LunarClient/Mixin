@@ -54,11 +54,11 @@ module org.spongepowered.mixin {
     requires static jopt.simple;
     
     // Guava, by file name and official module
-    requires static com.google.common;
+    //requires static com.google.common;
     requires static guava;
     
     // Gson, by file name and official module
-    requires static com.google.gson;
+    //requires static com.google.gson;
     requires static gson;
 
     //

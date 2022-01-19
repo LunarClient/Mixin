@@ -3,12 +3,10 @@ buildscript {
     repositories {
         mavenCentral()
         gradlePluginPortal()
-        mavenCentral()
     }
     dependencies {
         classpath 'gradle.plugin.com.hierynomus.gradle.plugins:license-gradle-plugin:0.16.1'
         classpath 'gradle.plugin.com.github.jengelman.gradle.plugins:shadow:7.0.0'
-        classpath 'com.guardsquare:proguard-gradle:7.1.0'
     }
 }
 
@@ -46,6 +44,9 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(16)
 }
 
+// True to do jar signing task
+ext.doSignJar = project.hasProperty("keyStorePath")
+
 // Project repositories
 repositories {
     mavenCentral()
@@ -79,14 +80,6 @@ configurations {
     modlauncherImplementation   .extendsFrom implementation
     modlauncher9Implementation  .extendsFrom modlauncherImplementation
     modularityImplementation    .extendsFrom modlauncher9Implementation
-    modularityCompileOnly       .extendsFrom compileOnly
-
-    proguard {
-        extendsFrom fernflowerImplementation
-        extendsFrom launchwrapperImplementation
-        extendsFrom modlauncherImplementation
-        extendsFrom compileClasspath
-    }
 }
 
 sourceSets {
@@ -159,14 +152,15 @@ potemkinModules {
 // Project dependencies
 dependencies {
     def guava = 'com.google.guava:guava:17.0' // for 1.8
-    def log4j2 = 'org.apache.logging.log4j:log4j-core:2.0-beta9'
+    def log4j2 = 'org.apache.logging.log4j:log4j-core:2.11.2'
     def gson = 'com.google.code.gson:gson:2.2.4'
 
     stagingJar guava
     stagingJar gson
 
     implementation guava
-    implementation 'com.google.code.gson:gson:2.2.4'
+    implementation log4j2
+    implementation gson
     if (Float.parseFloat(asmVersion) < 6) {
         implementation "org.ow2.asm:asm-debug-all:$asmVersion"
     }
@@ -249,7 +243,6 @@ eclipse {
             // Can't include old modlauncher because it causes issues with modules
             entries.removeAll { it.kind == 'lib' && it.path =~ ~/modlauncher-$legacyModlauncherVersion/ }
             entries.removeAll { it.kind == 'src' && it.path =~ ~/modlauncher4/ }
-            entries.removeAll { it.kind == 'lib' && it.path =~ ~/log4j.*beta9/ }
             
             // Mark everything else as a module
             entries.findAll { it.kind == "con" && it.path =~ /gradleclasspathcontainer$/ }.each {
@@ -371,30 +364,13 @@ task stagingJar(type: ShadowJar) {
         "Can-Redefine-Classes": true,
         "Can-Retransform-Classes": true
     )
+
+    if (project.doSignJar) {
+        archiveClassifier.set('unsigned')
+    }
     
     mergeServiceFiles()
-    relocate 'com.google', 'org.spongepowered.include.com.google'
-    archiveClassifier = "staging"
 }
-
-File proguardFile = file("build/libs/sponge-mixin-${version}.jar")
-
-task stagingProguardJar(type: proguard.gradle.ProGuardTask, dependsOn: stagingJar) {
-    doFirst {
-        configurations.proguard.resolve().forEach {
-            libraryjars it
-        }
-    }
-
-    outputs.upToDateWhen { false }
-
-    libraryjars JavaVersion.current().java9Compatible ? "${System.getProperty('java.home')}/jmods" : "${System.getProperty('java.home')}/lib/rt.jar"
-
-    injars stagingJar.archiveFile
-    outjars proguardFile
-    configuration file("proguard.conf")
-}
-build.dependsOn stagingProguardJar
 
 // Clear artifacts because jar will be there by default and we want to use staging jar instead
 configurations.archives.artifacts.clear()
@@ -402,14 +378,40 @@ configurations.archives.artifacts.clear()
 // generate shadow jar so we can use the AP standalone
 shadowJar  {
     from sourceSets.ap.output
-    archiveClassifier = 'processor'
+    archiveClassifier.set('processor')
 }
 build.dependsOn(shadowJar)
+
+if (project.doSignJar) {
+    // Define signjar task    
+    task signJar() {
+        inputs.files(stagingJar.outputs)
+        outputs.files stagingJar.outputs.files.collect {
+            new File(it.parent, it.name.replace('-unsigned', ''))
+        }
+        doLast {
+            stagingJar.outputs.files.each {
+                ant.signjar(
+                    alias: project.keyStoreCert,
+                    jar: it,
+                    signedJar: new File(it.parent, it.name.replace('-unsigned', '')),
+                    keystore: project.keyStorePath,
+                    storepass: project.keyStoreSecret,
+                    keypass: project.keyStoreSecret,
+                    tsaurl: project.timestampAuthority,
+                    preservelastmodified: 'true',
+                    verbose: true
+                )
+            }
+        }
+    }
+    build.dependsOn(signJar)
+}
 
 // Run this task instead of build to generate a timestamped shadow jar (for dev)
 task timestamp(type: Jar, dependsOn: build) {
     if (gradle.startParameter.taskNames.contains(name)) {
-        shadowJar.archiveClassifier = new Date().format('yyyyMMddHHmmss')
+        shadowJar.classifier = new Date().format('yyyyMMddHHmmss')
     }
 }
 
@@ -418,17 +420,21 @@ task sourceJar(type: Jar) {
         from it.java
         from it.resources
     }
-    archiveClassifier = "sources"
+	classifier = "sources"
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
     from javadoc.destinationDir
-    archiveClassifier = "javadoc"
+    archiveClassifier.set("javadoc")
 }
 
 artifacts {
-    archives stagingJar
+    if (project.doSignJar) {
+        archives signJar.outputs.files[0]
+    } else {
+        archives stagingJar
+    }
     archives sourceJar
     archives javadocJar
     archives shadowJar
