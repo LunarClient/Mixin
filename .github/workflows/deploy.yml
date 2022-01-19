@@ -5,6 +5,7 @@ on:
     branches:
       - lunar
       - java-11
+      - "merge/0.8.5+fabric"
 
 jobs:
   deploy:
