@@ -82,12 +82,12 @@ public class RuntimeDecompiler extends IFernflowerLogger implements IDecompiler,
             }
         }
     }
-    
+
     @Override
     public String toString() {
         try {
             URL codeSource = Fernflower.class.getProtectionDomain().getCodeSource().getLocation();
-            File file = new File(codeSource.toURI());
+            File file = org.spongepowered.asm.util.Files.toFile(codeSource);
             return file.getName();
         } catch (Exception ex) {
             return "unknown source (classpath)";
@@ -117,9 +117,9 @@ public class RuntimeDecompiler extends IFernflowerLogger implements IDecompiler,
                 mdAddSource.invoke(fernflower, file);
             } catch (ReflectiveOperationException ex) {
                 // Old fernflower
-                fernflower.getStructContext().addSpace(file, true);
+                fernflower.addSource(file);
             }
-            
+
             fernflower.decompileContext();
         } catch (Throwable ex) {
             this.logger.warn("Decompilation error while processing {}", file.getName());

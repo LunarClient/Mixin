@@ -27,6 +27,7 @@ package org.spongepowered.asm.mixin.struct;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
+import org.spongepowered.asm.mixin.transformer.ClassInfo;
 import org.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError;
 import org.spongepowered.asm.util.Bytecode;
 import org.spongepowered.asm.util.Handles;

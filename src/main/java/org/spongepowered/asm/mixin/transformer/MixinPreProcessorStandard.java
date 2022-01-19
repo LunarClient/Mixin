@@ -28,14 +28,10 @@ import java.lang.annotation.Annotation;
 import java.util.Iterator;
 
 import org.spongepowered.asm.logging.ILogger;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.AnnotationNode;
-import org.objectweb.asm.tree.FieldInsnNode;
-import org.objectweb.asm.tree.FieldNode;
-import org.objectweb.asm.tree.MethodInsnNode;
-import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.*;
 import org.spongepowered.asm.mixin.Dynamic;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.MixinEnvironment.CompatibilityLevel;
@@ -47,6 +43,7 @@ import org.spongepowered.asm.mixin.extensibility.IActivityContext.IActivity;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.gen.throwables.InvalidAccessorException;
+import org.spongepowered.asm.mixin.struct.MemberRef;
 import org.spongepowered.asm.mixin.throwables.ClassMetadataNotFoundException;
 import org.spongepowered.asm.mixin.throwables.MixinException;
 import org.spongepowered.asm.mixin.transformer.ClassInfo.Field;
@@ -182,7 +179,7 @@ class MixinPreProcessorStandard {
             
             activity.next("Prepare method");
             for (MixinMethodNode mixinMethod : this.classNode.mixinMethods) {
-                Method method = this.mixin.getClassInfo().findMethod(mixinMethod);
+                Method method = this.mixin.getClassInfo().findMethod(mixinMethod, mixinMethod.access | ClassInfo.INCLUDE_INITIALISERS);
                 IActivity methodActivity = this.activities.begin(mixinMethod.toString());
                 this.prepareMethod(mixinMethod, method);
                 methodActivity.end();
@@ -433,9 +430,6 @@ class MixinPreProcessorStandard {
         Method method = this.getSpecialMethod(mixinMethod, type);
         MethodNode target = context.findMethod(mixinMethod, annotation);
         if (target == null) {
-            if (type.isOverwrite) {
-                return false;
-            }
             target = context.findRemappedMethod(mixinMethod);
             if (target == null) {
                 throw new InvalidMixinException(this.mixin,
@@ -621,6 +615,7 @@ class MixinPreProcessorStandard {
             FieldNode target = context.findField(mixinField, shadow);
             if (target == null) {
                 if (shadow == null) {
+                    context.addMixinField(mixinField);
                     continue;
                 }
                 target = context.findRemappedField(mixinField);
@@ -644,6 +639,7 @@ class MixinPreProcessorStandard {
                     MixinPreProcessorStandard.logger.log(this.mixin.getLoggingLevel(), "Renaming @Unique field {}{} to {} in {}",
                             mixinField.name, mixinField.desc, uniqueName, this.mixin);
                     mixinField.name = field.renameTo(uniqueName);
+                    context.addMixinField(mixinField);
                     continue;
                 }
 
@@ -739,6 +735,8 @@ class MixinPreProcessorStandard {
                     this.transformMethod((MethodInsnNode)insn);
                 } else if (insn instanceof FieldInsnNode) {
                     this.transformField((FieldInsnNode)insn);
+                } else if (insn instanceof InvokeDynamicInsnNode) {
+                    this.transformInvokeDynamic((InvokeDynamicInsnNode)insn);
                 }
                 activity.end();
             }
@@ -746,36 +744,62 @@ class MixinPreProcessorStandard {
         methodActivity.end();
     }
 
-    protected void transformMethod(MethodInsnNode methodNode) {
-        IActivity activity = this.activities.begin("%s::%s%s", methodNode.owner, methodNode.name, methodNode.desc);
+    protected void transformInvokeDynamic(InvokeDynamicInsnNode invokeDynamicNode) {
+        IActivity activity = this.activities.begin("%s%s", invokeDynamicNode.name, invokeDynamicNode.desc);
         Section metaTimer = this.profiler.begin("meta");
-        ClassInfo owner = ClassInfo.forDescriptor(methodNode.owner, TypeLookup.DECLARED_TYPE);
-        if (owner == null) {
-            throw new ClassMetadataNotFoundException(methodNode.owner.replace('/', '.'));
+
+        MemberRef.Handle ref = new MemberRef.Handle(invokeDynamicNode.bsm);
+        transformMemberReference(ref);
+        invokeDynamicNode.bsm = ref.getMethodHandle();
+
+        for (int i = 0; i < invokeDynamicNode.bsmArgs.length; i++) {
+            if (invokeDynamicNode.bsmArgs[i] instanceof Handle) {
+                ref = new MemberRef.Handle((Handle) invokeDynamicNode.bsmArgs[i]);
+                transformMemberReference(ref);
+                invokeDynamicNode.bsmArgs[i] = ref.getMethodHandle();
+            }
         }
 
-        Method method = owner.findMethodInHierarchy(methodNode, SearchType.ALL_CLASSES, ClassInfo.INCLUDE_PRIVATE);
         metaTimer.end();
-        
-        if (method != null && method.isRenamed()) {
-            methodNode.name = method.getName();
-        }
         activity.end();
     }
 
+    protected void transformMethod(MethodInsnNode methodNode) {
+        MemberRef.Method ref = new MemberRef.Method(methodNode);
+        transformMemberReference(ref);
+    }
+
     protected void transformField(FieldInsnNode fieldNode) {
-        IActivity activity = this.activities.begin("%s::%s:%s", fieldNode.owner, fieldNode.name, fieldNode.desc);
+        MemberRef.Field ref = new MemberRef.Field(fieldNode);
+        transformMemberReference(ref);
+    }
+
+    protected void transformMemberReference(MemberRef ref) {
+        IActivity activity = this.activities.begin("%s::%s:%s", ref.getOwner(), ref.getName(), ref.getDesc());
         Section metaTimer = this.profiler.begin("meta");
-        ClassInfo owner = ClassInfo.forDescriptor(fieldNode.owner, TypeLookup.DECLARED_TYPE);
+
+        ClassInfo owner = ClassInfo.forDescriptor(ref.getOwner(), TypeLookup.DECLARED_TYPE);
         if (owner == null) {
-            throw new ClassMetadataNotFoundException(fieldNode.owner.replace('/', '.'));
+            throw new RuntimeException(new ClassNotFoundException(ref.getOwner().replace('/', '.')));
         }
-        
-        Field field = owner.findField(fieldNode, ClassInfo.INCLUDE_PRIVATE);
+
+        ClassInfo.Member member;
+        if (ref.isField()) {
+            int includeStatic = ((ref.getOpcode() == Opcodes.GETSTATIC || ref.getOpcode() == Opcodes.PUTSTATIC)
+                    ? ClassInfo.INCLUDE_STATIC : 0);
+            member = owner.findFieldInHierarchy(ref.getName(), ref.getDesc(), SearchType.ALL_CLASSES, ClassInfo.INCLUDE_PRIVATE | includeStatic);
+        } else {
+            int includeStatic = (ref.getOpcode() == Opcodes.INVOKESTATIC
+                    ? ClassInfo.INCLUDE_STATIC : 0);
+            ClassInfo.Method method = owner.findMethodInHierarchy(ref.getName(), ref.getDesc(), SearchType.ALL_CLASSES, ClassInfo.INCLUDE_PRIVATE | includeStatic);
+
+            //Accessors are never renamed, despite it appearing as if they have been
+            member = method != null && !method.isAccessor() ? method : null;
+        }
+
         metaTimer.end();
-        
-        if (field != null && field.isRenamed()) {
-            fieldNode.name = field.getName();
+        if (member != null && member.isRenamed()) {
+            ref.setName(member.getName());
         }
         activity.end();
     }

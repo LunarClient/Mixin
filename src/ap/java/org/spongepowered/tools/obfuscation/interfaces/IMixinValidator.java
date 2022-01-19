@@ -28,7 +28,7 @@ import java.util.Collection;
 
 import javax.lang.model.element.TypeElement;
 
-import org.spongepowered.tools.obfuscation.mirror.AnnotationHandle;
+import org.spongepowered.asm.util.asm.IAnnotationHandle;
 import org.spongepowered.tools.obfuscation.mirror.TypeHandle;
 
 /**
@@ -56,6 +56,6 @@ public interface IMixinValidator {
      * 
      * @return False to halt processing of further validators
      */
-    public abstract boolean validate(ValidationPass pass, TypeElement mixin, AnnotationHandle annotation, Collection<TypeHandle> targets);
+    public abstract boolean validate(ValidationPass pass, TypeElement mixin, IAnnotationHandle annotation, Collection<TypeHandle> targets);
 
 }

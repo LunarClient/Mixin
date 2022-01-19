@@ -232,19 +232,22 @@ public final class ClassInfo {
          * Frame local size 
          */
         public final int size;
+        public final int rawSize; // Fabric non-adjusted frame size for legacy support
 
         FrameData(int index, int type, int locals, int size) {
             this.index = index;
             this.type = type;
             this.locals = locals;
             this.size = size;
+            this.rawSize = size;
         }
 
         FrameData(int index, FrameNode frameNode, int initialFrameSize) {
             this.index = index;
             this.type = frameNode.type;
             this.locals = frameNode.local != null ? frameNode.local.size() : 0;
-            this.size = Locals.computeFrameSize(frameNode, initialFrameSize);
+            this.rawSize = Locals.computeFrameSize(frameNode, 0);
+            this.size = Math.max(rawSize, initialFrameSize);
         }
 
         /* (non-Javadoc)
@@ -1638,10 +1641,11 @@ public final class ClassInfo {
      * @param name Method name to search for
      * @param desc Method descriptor
      * @param searchType Search strategy to use
+     * @param flags search flags
      * @return the method object or null if the method could not be resolved
      */
-    public Method findMethodInHierarchy(String name, String desc, SearchType searchType) {
-        return this.findMethodInHierarchy(name, desc, searchType, Traversal.NONE);
+    public Method findMethodInHierarchy(String name, String desc, SearchType searchType, int flags) {
+        return this.findMethodInHierarchy(name, desc, searchType, Traversal.NONE, flags);
     }
 
     /**
@@ -1727,6 +1731,19 @@ public final class ClassInfo {
      */
     public Field findFieldInHierarchy(String name, String desc, SearchType searchType) {
         return this.findFieldInHierarchy(name, desc, searchType, Traversal.NONE);
+    }
+
+    /**
+     * Finds the specified public or protected field in this class's hierarchy
+     *
+     * @param name Field name to search for
+     * @param desc Field descriptor
+     * @param searchType Search strategy to use
+     * @param flags search flags
+     * @return the field object or null if the field could not be resolved
+     */
+    public Field findFieldInHierarchy(String name, String desc, SearchType searchType, int flags) {
+        return this.findFieldInHierarchy(name, desc, searchType, Traversal.NONE, flags);
     }
 
     /**

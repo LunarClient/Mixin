@@ -26,7 +26,6 @@
 /**
  * Mixin module declaration
  */
-@SuppressWarnings("module") // Suppress the warnings about gson and gson below. Damn gsons, you ruined gson!
 module org.spongepowered.mixin {
 
     //
@@ -53,7 +52,13 @@ module org.spongepowered.mixin {
     // Automatic modules we depend on, using static to avoid the forward compatibility mess
     //
     requires static jopt.simple;
+    
+    // Guava, by file name and official module
+    requires static com.google.common;
     requires static guava;
+    
+    // Gson, by file name and official module
+    requires static com.google.gson;
     requires static gson;
 
     //
@@ -106,7 +111,6 @@ module org.spongepowered.mixin {
     exports org.spongepowered.tools.obfuscation.mirror;
     exports org.spongepowered.tools.obfuscation.service;
     
-    // one of these won't exist, the SuppressWarnings above stops the compiler complaining
     opens org.spongepowered.asm.mixin.transformer
         to com.google.gson, gson;
     

@@ -47,6 +47,7 @@ import org.spongepowered.tools.obfuscation.mapping.IMappingWriter;
 import org.spongepowered.tools.obfuscation.mapping.IMappingConsumer.MappingSet;
 import org.spongepowered.tools.obfuscation.mirror.TypeHandle;
 import org.spongepowered.tools.obfuscation.interfaces.IObfuscationEnvironment;
+import org.spongepowered.tools.obfuscation.interfaces.IMessagerEx.MessageType;
 import org.spongepowered.tools.obfuscation.interfaces.IMixinAnnotationProcessor;
 
 /**
@@ -153,7 +154,7 @@ public abstract class ObfuscationEnvironment implements IObfuscationEnvironment 
                 File inputFile = new File(inputFileName);
                 try {
                     if (inputFile.isFile()) {
-                        this.ap.printMessage(Kind.NOTE, "Loading " + this.type + " mappings from " + inputFile.getAbsolutePath());
+                        this.ap.printMessage(MessageType.INFO, "Loading " + this.type + " mappings from " + inputFile.getAbsolutePath());
                         this.mappingProvider.read(inputFile);
                         successCount++;
                     }
@@ -247,7 +248,7 @@ public abstract class ObfuscationEnvironment implements IObfuscationEnvironment 
                 return mapping.move(remappedOwner);
             }
             String desc = ObfuscationUtil.mapDescriptor(mapping.getDesc(), this.remapper);
-            return new MappingMethod(remappedOwner, mapping.getSimpleName(), desc);
+            return new MappingMethod(remappedOwner, mapping.getSimpleName(), desc != null ? desc : mapping.getDesc());
         }
         return null;
     }
@@ -274,7 +275,7 @@ public abstract class ObfuscationEnvironment implements IObfuscationEnvironment 
         String desc = method.getDesc();
         if (desc != null) {
             String newDesc = ObfuscationUtil.mapDescriptor(method.getDesc(), this.remapper);
-            if (!newDesc.equals(method.getDesc())) {
+            if (newDesc != null) {
                 desc = newDesc;
                 transformed = true;
             }
@@ -292,7 +293,8 @@ public abstract class ObfuscationEnvironment implements IObfuscationEnvironment 
      */
     @Override
     public String remapDescriptor(String desc) {
-        return ObfuscationUtil.mapDescriptor(desc, this.remapper);
+        String newDesc = ObfuscationUtil.mapDescriptor(desc, this.remapper);
+        return newDesc != null ? newDesc : desc;
     }
     
     /**

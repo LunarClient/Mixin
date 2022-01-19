@@ -73,6 +73,7 @@ import org.spongepowered.asm.util.Bytecode;
 import org.spongepowered.asm.util.LanguageFeatures;
 import org.spongepowered.asm.util.asm.ASM;
 import org.spongepowered.asm.util.asm.MethodNodeEx;
+import org.spongepowered.asm.util.CompareUtil;
 import org.spongepowered.asm.util.perf.Profiler;
 import org.spongepowered.asm.util.perf.Profiler.Section;
 
@@ -699,16 +700,16 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
      * Handle for a declared target on a mixin.
      */
     static final class DeclaredTarget {
-        
+
         final String name;
-        
+
         final boolean isPrivate;
 
         private DeclaredTarget(String name, boolean isPrivate) {
             this.name = name;
             this.isPrivate = isPrivate;
         }
-        
+
         @Override
         public String toString() {
             return this.name;
@@ -723,9 +724,9 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
             }
             return null;
         }
-        
+
     }
-    
+
     /**
      * Global order of mixin infos, used to determine ordering between mixins
      * with equivalent priority
@@ -772,7 +773,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
      * but not yet parsed in the current environment
      */
     private final transient List<DeclaredTarget> declaredTargets;
-    
+
     /**
      * Mixin targets, read from the {@link Mixin} annotation on the mixin class
      */
@@ -959,7 +960,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
     /**
      * Combine the public and private mixin targets from the supplied annotation
      * and return them as an interable collection
-     * 
+     *
      * @param mixin mixin annotation
      * @return target list
      */
@@ -977,7 +978,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
 
     /**
      * Check whether this mixin should apply to the specified taret
-     * 
+     *
      * @param ignorePlugin true to ignore the config plugin
      * @param targetName target class name
      * @return true if the mixin should be a pplied
@@ -991,7 +992,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
 
     /**
      * Read and parse target classes from the supplied class node
-     * 
+     *
      * @param classNode class node to parse
      * @param ignorePlugin true to ignore the config plugin when deciding
      *      whether to apply declared targets
@@ -1067,7 +1068,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
     private boolean isReloading() {
         return this.pendingState instanceof Reloaded;
     }
-    
+
     String remapClassName(String className) {
         return this.parent.remapClassName(this.getClassRef(), className);
     }
@@ -1195,7 +1196,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
     public boolean isRequired() {
         return this.parent.isRequired();
     }
-    
+
     /**
      * Get the logging level for this mixin
      */
@@ -1225,7 +1226,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
     List<String> getDeclaredTargetClasses() {
         return Collections.<String>unmodifiableList(Lists.transform(this.declaredTargets, Functions.toStringFunction()));
     }
-    
+
     /**
      * Get the target class names for this mixin
      */
@@ -1343,9 +1344,10 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
             return 0;
         }
         if (other.priority == this.priority) {
-            return this.order - other.order;
+            return CompareUtil.compare(this.order, other.order);
+        } else {
+            return (this.priority < other.priority) ? -1 : 1;
         }
-        return (this.priority - other.priority);
     }
 
     /**

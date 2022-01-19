@@ -27,12 +27,9 @@ package org.spongepowered.tools.obfuscation;
 import java.lang.annotation.Annotation;
 import java.util.List;
 
-import javax.annotation.processing.Messager;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
-import javax.tools.Diagnostic;
-import javax.tools.Diagnostic.Kind;
 
 import org.spongepowered.asm.mixin.injection.selectors.ISelectorContext;
 import org.spongepowered.asm.mixin.injection.selectors.ITargetSelector;
@@ -41,12 +38,15 @@ import org.spongepowered.asm.mixin.refmap.IMixinContext;
 import org.spongepowered.asm.obfuscation.mapping.IMapping;
 import org.spongepowered.asm.obfuscation.mapping.common.MappingField;
 import org.spongepowered.asm.obfuscation.mapping.common.MappingMethod;
+import org.spongepowered.asm.util.Bytecode.Visibility;
 import org.spongepowered.asm.util.ConstraintParser;
 import org.spongepowered.asm.util.ConstraintParser.Constraint;
 import org.spongepowered.asm.util.asm.IAnnotatedElement;
 import org.spongepowered.asm.util.asm.IAnnotationHandle;
 import org.spongepowered.asm.util.throwables.ConstraintViolationException;
 import org.spongepowered.asm.util.throwables.InvalidConstraintException;
+import org.spongepowered.tools.obfuscation.interfaces.IMessagerEx;
+import org.spongepowered.tools.obfuscation.interfaces.IMessagerEx.MessageType;
 import org.spongepowered.tools.obfuscation.interfaces.IMessagerSuppressible;
 import org.spongepowered.tools.obfuscation.interfaces.IMixinAnnotationProcessor;
 import org.spongepowered.tools.obfuscation.interfaces.IObfuscationManager;
@@ -56,7 +56,6 @@ import org.spongepowered.tools.obfuscation.mirror.FieldHandle;
 import org.spongepowered.tools.obfuscation.mirror.MethodHandle;
 import org.spongepowered.tools.obfuscation.mirror.TypeHandle;
 import org.spongepowered.tools.obfuscation.mirror.TypeUtils;
-import org.spongepowered.tools.obfuscation.mirror.Visibility;
 
 /**
  * Base class for module for {@link AnnotatedMixin} which handle different
@@ -99,12 +98,12 @@ abstract class AnnotatedMixinElementHandler {
             return this.desc;
         }
         
-        public final void printMessage(Messager messager, Diagnostic.Kind kind, CharSequence msg) {
-            messager.printMessage(kind, msg, this.element, this.annotation.asMirror());
+        public final void printMessage(IMessagerEx messager, MessageType type, CharSequence msg) {
+            messager.printMessage(type, msg, this.element, this.annotation.asMirror());
         }
 
-        public final void printMessage(IMessagerSuppressible messager, Diagnostic.Kind kind, CharSequence msg, SuppressedBy suppressedBy) {
-            messager.printMessage(kind, msg, this.element, this.annotation.asMirror(), suppressedBy);
+        public final void printMessage(IMessagerSuppressible messager, MessageType type, CharSequence msg, SuppressedBy suppressedBy) {
+            messager.printMessage(type, msg, this.element, this.annotation.asMirror(), suppressedBy);
         }
         
         @Override
@@ -192,6 +191,11 @@ abstract class AnnotatedMixinElementHandler {
         
         public AliasedElementName(Element element, AnnotationHandle annotation) {
             this.originalName = element.getSimpleName().toString();
+            this.aliases = annotation.<String>getList("aliases");
+        }
+        
+        public AliasedElementName(MethodHandle method, AnnotationHandle annotation) {
+            this.originalName = method.getName();
             this.aliases = annotation.<String>getList("aliases");
         }
         
@@ -445,10 +449,10 @@ abstract class AnnotatedMixinElementHandler {
             try {
                 constraint.check(this.ap.getTokenProvider());
             } catch (ConstraintViolationException ex) {
-                this.ap.printMessage(Kind.ERROR, ex.getMessage(), method, annotation.asMirror());
+                this.ap.printMessage(MessageType.CONSTRAINT_VIOLATION, ex.getMessage(), method, annotation.asMirror());
             }
         } catch (InvalidConstraintException ex) {
-            this.ap.printMessage(Kind.WARNING, ex.getMessage(), method, annotation.asMirror(), SuppressedBy.CONSTRAINTS);
+            this.ap.printMessage(MessageType.INVALID_CONSTRAINT, ex.getMessage(), method, annotation.asMirror(), SuppressedBy.CONSTRAINTS);
         }
     }
     
@@ -495,7 +499,8 @@ abstract class AnnotatedMixinElementHandler {
                     this.validateMethodVisibility(method, annotation, type, target, targetMethod);
                 }
             } else if (!merge) {
-                this.printMessage(Kind.WARNING, "Cannot find target for " + type + " method in " + target, method, annotation, SuppressedBy.TARGET);
+                this.printMessage(MessageType.TARGET_ELEMENT_NOT_FOUND, "Cannot find target for " + type + " method in " + target,
+                        method, annotation, SuppressedBy.TARGET);
             }
         }
     }
@@ -510,10 +515,10 @@ abstract class AnnotatedMixinElementHandler {
         Visibility visMethod = TypeUtils.getVisibility(method);
         String visibility = "visibility of " + visTarget + " method in " + target;
         if (visTarget.ordinal() > visMethod.ordinal()) {
-            this.printMessage(Kind.WARNING, visMethod + " " + type + " method cannot reduce " + visibility, method, annotation,
+            this.printMessage(MessageType.METHOD_VISIBILITY, visMethod + " " + type + " method cannot reduce " + visibility, method, annotation,
                     SuppressedBy.VISIBILITY);
         } else if (visTarget == Visibility.PRIVATE && visMethod.ordinal() > visTarget.ordinal()) {
-            this.printMessage(Kind.WARNING, visMethod + " " + type + " method will upgrade " + visibility, method, annotation,
+            this.printMessage(MessageType.METHOD_VISIBILITY, visMethod + " " + type + " method will upgrade " + visibility, method, annotation,
                     SuppressedBy.VISIBILITY);
         }
     }
@@ -545,8 +550,8 @@ abstract class AnnotatedMixinElementHandler {
             }
             
             if (targetField == null) {
-                this.ap.printMessage(Kind.WARNING, "Cannot find target for " + type + " field in " + target, field, annotation.asMirror(),
-                        SuppressedBy.TARGET);
+                this.ap.printMessage(MessageType.TARGET_ELEMENT_NOT_FOUND, "Cannot find target for " + type + " field in " + target,
+                        field, annotation.asMirror(), SuppressedBy.TARGET);
             }
         }
     }
@@ -570,17 +575,18 @@ abstract class AnnotatedMixinElementHandler {
             
             MethodHandle targetMethod = target.findMethod(nameRef.getName(), signature);
             if (targetMethod == null) {
-                this.ap.printMessage(Kind.WARNING, "Cannot find target method \"" + nameRef.getName() + nameRef.getDesc() + "\" for " + subject
-                        + " in " + target, elem.getElement(), elem.getAnnotation().asMirror(), SuppressedBy.TARGET);
+                this.ap.printMessage(MessageType.TARGET_ELEMENT_NOT_FOUND, "Cannot find target method \"" + nameRef.getName()
+                        + nameRef.getDesc() + "\" for " + subject + " in " + target, elem.getElement(), elem.getAnnotation().asMirror(),
+                        SuppressedBy.TARGET);
             }
         }            
     }
 
-    private void printMessage(Kind kind, String msg, Element e, AnnotationHandle annotation, SuppressedBy suppressedBy) {
+    private void printMessage(MessageType type, String msg, Element e, AnnotationHandle annotation, SuppressedBy suppressedBy) {
         if (annotation == null) {
-            this.ap.printMessage(kind, msg, e, suppressedBy);
+            this.ap.printMessage(type, msg, e, suppressedBy);
         } else {
-            this.ap.printMessage(kind, msg, e, annotation.asMirror(), suppressedBy);
+            this.ap.printMessage(type, msg, e, annotation.asMirror(), suppressedBy);
         }
     }
 

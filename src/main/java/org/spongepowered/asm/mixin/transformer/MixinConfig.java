@@ -48,6 +48,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.InjectionPoint;
 import org.spongepowered.asm.mixin.injection.selectors.ITargetSelectorDynamic;
 import org.spongepowered.asm.mixin.injection.selectors.TargetSelector;
+import org.spongepowered.asm.mixin.refmap.IClassReferenceMapper;
 import org.spongepowered.asm.mixin.refmap.IReferenceMapper;
 import org.spongepowered.asm.mixin.refmap.ReferenceMapper;
 import org.spongepowered.asm.mixin.refmap.RemappingReferenceMapper;
@@ -55,6 +56,7 @@ import org.spongepowered.asm.mixin.transformer.ext.Extensions;
 import org.spongepowered.asm.mixin.transformer.throwables.InvalidMixinException;
 import org.spongepowered.asm.service.IMixinService;
 import org.spongepowered.asm.service.MixinService;
+import org.spongepowered.asm.util.CompareUtil;
 import org.spongepowered.asm.util.VersionNumber;
 
 import com.google.common.base.Strings;
@@ -81,13 +83,13 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
         
         @SerializedName("namespace")
         String namespace;
-        
+
         @SerializedName("injectionPoints")
         List<String> injectionPoints;
         
         @SerializedName("dynamicSelectors")
         List<String> dynamicSelectors;
-        
+
         @SerializedName("maxShiftBy")
         int maxShiftBy = InjectionPoint.DEFAULT_ALLOWED_SHIFT_BY;
 
@@ -291,13 +293,13 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
      * mixinPackage will be prepended. This allows for full control over the
      * refmap for cases where you need more fine-grained control then the
      * default remappers.
-     * 
+     *
      * <p>Must have a public constructor that takes {@Link MixinEnvironment} and
      * {@Link IReferenceMapper}
      */
     @SerializedName("refmapWrapper")
     private String refMapperWrapper;
-    
+
     /**
      * True to output "mixing in" messages at INFO level rather than DEBUG 
      */
@@ -608,7 +610,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
                 this.initInjectionPoint(injectionPointClassName, this.injectorOptions.namespace);
             }
         }
-        
+
         if (this.injectorOptions.dynamicSelectors != null) {
             for (String dynamicSelectorClassName : this.injectorOptions.dynamicSelectors) {
                 this.initDynamicSelector(dynamicSelectorClassName, this.injectorOptions.namespace);
@@ -628,7 +630,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
                             className, this, cnfe);
                     return;
                 }
-    
+
                 InjectionPoint.register((Class<? extends InjectionPoint>)injectionPointClass, namespace);
             }
         } catch (Throwable th) {
@@ -647,7 +649,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
             this.logger.catching(th);
         }
     }
-    
+
     private Class<?> findExtensionClass(String className, Class<?> superType, String extensionType) {
         Class<?> extensionClass = null;
         try {
@@ -656,7 +658,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
             this.logger.error("Unable to register {} {} for {}, the specified class was not found", extensionType, className, this, cnfe);
             return null;
         }
-        
+
         if (!superType.isAssignableFrom(extensionClass)) {
             this.logger.error("Unable to register {} {} for {}, class is not assignable to {}", extensionType, className, this, superType);
             return null;
@@ -671,7 +673,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
             if (this.parent != null && this.parent.version != null) {
                 return true;
             }
-            this.logger.error("Mixin config {} does not specify \"minVersion\" property", this.name);
+            this.logger.debug("Mixin config {} does not specify \"minVersion\" property", this.name);
         }
         
         VersionNumber minVersion = VersionNumber.parse(this.version);
@@ -1084,7 +1086,12 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
 //        if (remapped != null) {
 //            return remapped;
 //        }
-        return this.getReferenceMapper().remap(className, reference);
+        IReferenceMapper mapper = this.getReferenceMapper();
+        if (mapper instanceof IClassReferenceMapper) {
+            return ((IClassReferenceMapper) mapper).remapClassName(className, reference);
+        } else {
+            return mapper.remap(className, reference);
+        }
     }
     
     /* (non-Javadoc)
@@ -1094,10 +1101,10 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
     public IMixinConfigPlugin getPlugin() {
         return this.plugin.get();
     }
-    
+
     /**
      * Returns a mutable view of the targets set, used to pass the targets to
-     * config plugins 
+     * config plugins
      */
     public Set<String> getTargetsSet() {
         return this.mixinMapping.keySet();
@@ -1168,7 +1175,7 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
     public Level getLoggingLevel() {
         return this.verboseLogging ? Level.INFO : Level.DEBUG;
     }
-    
+
     /**
      * Get whether verbose logging is enabled
      */
@@ -1261,9 +1268,10 @@ final class MixinConfig implements Comparable<MixinConfig>, IMixinConfig {
             return 0;
         }
         if (other.priority == this.priority) {
-            return this.order - other.order;
+            return CompareUtil.compare(this.order, other.order);
+        } else {
+            return (this.priority < other.priority) ? -1 : 1;
         }
-        return (this.priority - other.priority);
     }
     
     /**

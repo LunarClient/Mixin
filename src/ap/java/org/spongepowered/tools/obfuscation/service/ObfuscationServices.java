@@ -26,7 +26,11 @@ package org.spongepowered.tools.obfuscation.service;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -35,6 +39,10 @@ import javax.tools.Diagnostic.Kind;
 
 import org.spongepowered.tools.obfuscation.ObfuscationType;
 import org.spongepowered.tools.obfuscation.SupportedOptions;
+import org.spongepowered.tools.obfuscation.interfaces.IMessagerEx.MessageType;
+
+import com.google.common.base.Joiner;
+
 import org.spongepowered.tools.obfuscation.interfaces.IMixinAnnotationProcessor;
 
 /**
@@ -58,6 +66,11 @@ public final class ObfuscationServices {
     private final Set<IObfuscationService> services = new HashSet<IObfuscationService>();
     
     /**
+     * True if provider init was already completed
+     */
+    private boolean providerInitDone = false;
+
+    /**
      * Singleton pattern
      */
     private ObfuscationServices() {
@@ -80,8 +93,15 @@ public final class ObfuscationServices {
      * @param ap annotation processor
      */
     public void initProviders(IMixinAnnotationProcessor ap) {
+        if (this.providerInitDone) {
+            return;
+        }
+        this.providerInitDone = true;
+
         boolean defaultIsPresent = false;
         
+        Map<String, Set<String>> supportedTypes = new LinkedHashMap<String, Set<String>>();
+
         try {
             for (IObfuscationService service : this.serviceLoader) {
                 if (!this.services.contains(service)) {
@@ -94,7 +114,11 @@ public final class ObfuscationServices {
                         for (ObfuscationTypeDescriptor obfType : obfTypes) {
                             try {
                                 ObfuscationType type = ObfuscationType.create(obfType, ap);
-                                ap.printMessage(Kind.NOTE, serviceName + " supports type: \"" + type + "\"");
+                                Set<String> types = supportedTypes.get(serviceName);
+                                if (types == null) {
+                                    supportedTypes.put(serviceName, types = new LinkedHashSet<String>());
+                                }
+                                types.add(type.getKey());
                                 defaultIsPresent |= type.isDefault();
                             } catch (Exception ex) {
                                 ex.printStackTrace();
@@ -108,6 +132,14 @@ public final class ObfuscationServices {
             serviceError.printStackTrace();
         }
         
+        if (supportedTypes.size() > 0) {
+            StringBuilder sb = new StringBuilder("Supported obfuscation types:");
+            for (Entry<String, Set<String>> supportedType : supportedTypes.entrySet()) {
+                sb.append(' ').append(supportedType.getKey()).append(" supports [").append(Joiner.on(',').join(supportedType.getValue())).append(']');
+            }
+            ap.printMessage(MessageType.INFO, sb.toString());
+        }
+
         if (!defaultIsPresent) {
             String defaultEnv = ap.getOption(SupportedOptions.DEFAULT_OBFUSCATION_ENV);
             if (defaultEnv == null) {

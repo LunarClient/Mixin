@@ -221,9 +221,6 @@ public final class ReferenceMapper implements IReferenceMapper, Serializable {
             return null;
         }
         String conformedReference = reference.replaceAll("\\s", "");
-        if (conformedReference.equals(newReference)) {
-            return null;
-        }
         Map<String, Map<String, String>> mappings = this.mappings;
         if (context != null) {
             mappings = this.data.get(context);

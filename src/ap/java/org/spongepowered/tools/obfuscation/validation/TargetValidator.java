@@ -35,12 +35,14 @@ import javax.lang.model.type.TypeMirror;
 
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
+import org.spongepowered.asm.util.asm.IAnnotationHandle;
 import org.spongepowered.tools.obfuscation.MixinValidator;
 import org.spongepowered.tools.obfuscation.SupportedOptions;
+import org.spongepowered.tools.obfuscation.interfaces.IMessagerEx.MessageType;
 import org.spongepowered.tools.obfuscation.interfaces.IMixinAnnotationProcessor;
 import org.spongepowered.tools.obfuscation.mirror.AnnotationHandle;
-import org.spongepowered.tools.obfuscation.mirror.TypeUtils;
 import org.spongepowered.tools.obfuscation.mirror.TypeHandle;
+import org.spongepowered.tools.obfuscation.mirror.TypeUtils;
 
 /**
  * Validator which checks that the mixin targets are sane
@@ -63,7 +65,7 @@ public class TargetValidator extends MixinValidator {
      *      java.util.Collection)
      */
     @Override
-    public boolean validate(TypeElement mixin, AnnotationHandle annotation, Collection<TypeHandle> targets) {
+    public boolean validate(TypeElement mixin, IAnnotationHandle annotation, Collection<TypeHandle> targets) {
         if ("true".equalsIgnoreCase(this.options.getOption(SupportedOptions.DISABLE_TARGET_VALIDATOR))) {
             return true;
         }
@@ -94,7 +96,8 @@ public class TargetValidator extends MixinValidator {
         for (TypeHandle target : targets) {
             TypeElement targetType = target.getElement();
             if (targetType != null && !(targetType.getKind() == ElementKind.INTERFACE)) {
-                this.error("Targetted type '" + target + " of " + mixin + " is not an interface", mixin);
+                this.messager.printMessage(MessageType.TARGET_VALIDATOR, "Targetted type '" + target + " of " + mixin + " is not an interface",
+                        mixin);
             }
         }
     }
@@ -103,9 +106,10 @@ public class TargetValidator extends MixinValidator {
         TypeMirror superClass = mixin.getSuperclass();
         
         for (TypeHandle target : targets) {
-            TypeMirror targetType = target.getType();
+            TypeMirror targetType = target.getTypeMirror();
             if (targetType != null && !this.validateSuperClass(targetType, superClass)) {
-                this.error("Superclass " + superClass + " of " + mixin + " was not found in the hierarchy of target class " + targetType, mixin);
+                this.messager.printMessage(MessageType.TARGET_VALIDATOR, "Superclass " + superClass + " of " + mixin
+                        + " was not found in the hierarchy of target class " + targetType, mixin);
             }
         }
     }

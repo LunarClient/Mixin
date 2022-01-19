@@ -30,6 +30,7 @@ import java.util.Map;
 
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.spongepowered.asm.util.Bytecode;
+import org.spongepowered.asm.util.CompareUtil;
 
 /**
  * Used to keep track of instruction nodes in a {@link Target} method which are
@@ -184,8 +185,8 @@ public class InjectionNodes extends ArrayList<InjectionNodes.InjectionNode> {
          * Get the specified decoration
          * 
          * @param key meta key
-         * @return decoration value or null if absent
          * @param <V> value type
+         * @return decoration value or null if absent
          */
         @SuppressWarnings("unchecked")
         public <V> V getDecoration(String key) {
@@ -197,7 +198,7 @@ public class InjectionNodes extends ArrayList<InjectionNodes.InjectionNode> {
          */
         @Override
         public int compareTo(InjectionNode other) {
-            return other == null ? Integer.MAX_VALUE : this.hashCode() - other.hashCode();
+            return other == null ? Integer.MAX_VALUE : CompareUtil.compare(this.hashCode(), other.hashCode());
         }
         
         /* (non-Javadoc)
