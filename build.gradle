@@ -155,9 +155,6 @@ dependencies {
     def log4j2 = 'org.apache.logging.log4j:log4j-core:2.11.2'
     def gson = 'com.google.code.gson:gson:2.2.4'
 
-    stagingJar guava
-    stagingJar gson
-
     implementation guava
     implementation log4j2
     implementation gson
@@ -441,13 +438,12 @@ artifacts {
 }
 
 ext.excludePomDeps = [
-    'fernflower',
-    'jarjar',
-    'hamcrest-library',
-    'junit',
-    'mockito-core',
-    'mixin-asm-debug-all',
-    'log4j-core'
+        'asm-tree',
+        'asm-commons',
+        'asm-util',
+        'log4j-core',
+        'guava',
+        'gson',
 ]
 
 publishing {
