@@ -73,6 +73,7 @@ import org.spongepowered.tools.obfuscation.mirror.TypeHandle;
 import org.spongepowered.tools.obfuscation.mirror.TypeHandleASM;
 import org.spongepowered.tools.obfuscation.mirror.TypeHandleSimulated;
 import org.spongepowered.tools.obfuscation.mirror.TypeReference;
+import org.spongepowered.tools.obfuscation.mirror.TypeUtils;
 import org.spongepowered.tools.obfuscation.struct.InjectorRemap;
 import org.spongepowered.tools.obfuscation.validation.ParentValidator;
 import org.spongepowered.tools.obfuscation.validation.TargetValidator;
@@ -86,7 +87,7 @@ import com.google.common.collect.ImmutableList.Builder;
  */
 final class AnnotatedMixins implements IMixinAnnotationProcessor, ITokenProvider, ITypeHandleProvider, IJavadocProvider {
 
-    private static final String MAPID_SYSTEM_PROPERTY = "mixin.target.mapid";
+    private static final String MAPID_SYSTEM_PROPERTY = "fabric.mixin.target.mapid";
     
     private static final String RECOMMENDED_MIXINGRADLE_VERSION = "0.7";
 
@@ -370,17 +371,13 @@ final class AnnotatedMixins implements IMixinAnnotationProcessor, ITokenProvider
         return this.mixins.get(mixinType);
     }
 
-    public Collection<TypeMirror> getMixinsTargeting(TypeMirror targetType) {
-        return this.getMixinsTargeting((TypeElement)((DeclaredType)targetType).asElement());
-    }
-
-    public Collection<TypeMirror> getMixinsTargeting(TypeElement targetType) {
-        List<TypeMirror> minions = new ArrayList<TypeMirror>();
+    public Collection<TypeHandle> getMixinsTargeting(TypeHandle targetType) {
+        List<TypeHandle> minions = new ArrayList<TypeHandle>();
 
         for (TypeReference mixin : this.targets.getMixinsTargeting(targetType)) {
-            TypeHandle handle = mixin.getHandle(this.processingEnv);
-            if (handle != null && handle.hasTypeMirror()) {
-                minions.add(handle.getTypeMirror());
+            TypeHandle handle = mixin.getHandle(this);
+            if (handle != null) {
+                minions.add(handle);
             }
         }
 
@@ -688,34 +685,39 @@ final class AnnotatedMixins implements IMixinAnnotationProcessor, ITokenProvider
         name = name.replace('/', '.');
 
         Elements elements = this.processingEnv.getElementUtils();
+        PackageElement pkg = null;
+
+        int lastDotPos = name.lastIndexOf('.');
+        if (lastDotPos > -1) {
+            String pkgName = name.substring(0, lastDotPos);
+            pkg = elements.getPackageElement(pkgName);
+        }
+
+        if (pkg != null) {
+            // ASM gives the most and most accurate information. Try that first.
+            TypeHandle asmTypeHandle = TypeHandleASM.of(pkg, name.substring(lastDotPos + 1), this);
+            if (asmTypeHandle != null) {
+                return asmTypeHandle;
+            }
+        }
+
+        // ASM may be unable to resolve the class, for example if it's currently being compiled.
+        // Mirror is our next best bet.
         TypeElement element = this.getTypeElement(name, elements);
         if (element != null) {
             try {
-                return new TypeHandle(element);
+                return new TypeHandle(element, this);
             } catch (NullPointerException ex) {
                 // probably bad package
             }
         }
 
-        int lastDotPos = name.lastIndexOf('.');
-        if (lastDotPos > -1) {
-            String pkgName = name.substring(0, lastDotPos);
-            PackageElement pkg = elements.getPackageElement(pkgName);
-            if (pkg != null) {
-                // If we can resolve the package but not the class, it's possible
-                // we're dealing with a class that mirror can't access, such as
-                // an anonymous class. The class might be available via the
-                // classpath though, so let's attempt to read the class with ASM
-                TypeHandle asmTypeHandle = TypeHandleASM.of(pkg, name.substring(lastDotPos + 1), this);
-                if (asmTypeHandle != null) {
-                    return asmTypeHandle;
-                }
-
-                // Couldn't resolve the class, so just return an imaginary handle
-                return new TypeHandle(pkg, name);
-            }
+        if (pkg != null) {
+            // Couldn't resolve the class, but could resolve the package, so just return an imaginary handle.
+            return new TypeHandle(pkg, name, this);
         }
 
+        // Couldn't even resolve the package, all hope is lost.
         return null;
     }
 
@@ -728,11 +730,11 @@ final class AnnotatedMixins implements IMixinAnnotationProcessor, ITokenProvider
         if (type instanceof TypeHandle) {
             return (TypeHandle)type;
         } else if (type instanceof DeclaredType) {
-            return new TypeHandle((DeclaredType)type);
+            return this.getTypeHandle(TypeUtils.getInternalName((DeclaredType) type));
         } else if (type instanceof Type) {
             return this.getTypeHandle(((Type)type).getClassName());
         } else if (type instanceof TypeElement) {
-            return new TypeHandle((DeclaredType)((TypeElement)type).asType());
+            return this.getTypeHandle(TypeUtils.getInternalName((TypeElement) type));
         } else if (type instanceof String) {
             return this.getTypeHandle(type.toString());
         }
@@ -810,11 +812,11 @@ final class AnnotatedMixins implements IMixinAnnotationProcessor, ITokenProvider
             String pkg = name.substring(0, lastDotPos);
             PackageElement packageElement = this.processingEnv.getElementUtils().getPackageElement(pkg);
             if (packageElement != null) {
-                return new TypeHandleSimulated(packageElement, name, simulatedTarget);
+                return new TypeHandleSimulated(packageElement, name, simulatedTarget, this);
             }
         }
 
-        return new TypeHandleSimulated(name, simulatedTarget);
+        return new TypeHandleSimulated(name, simulatedTarget, this);
     }
 
     /* (non-Javadoc)

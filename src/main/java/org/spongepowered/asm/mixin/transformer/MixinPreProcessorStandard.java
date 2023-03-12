@@ -628,13 +628,8 @@ class MixinPreProcessorStandard {
                 mixinField.name = field.renameTo(target.name);
             }
             
-            if (!Bytecode.compareFlags(mixinField, target, Opcodes.ACC_STATIC)) {
-                throw new InvalidMixinException(this.mixin, String.format("STATIC modifier of @Shadow field %s in %s does not match the target",
-                        mixinField.name, this.mixin));
-            }
-            
             if (field.isUnique()) {
-                if ((mixinField.access & (Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) != 0) {
+                if (Bytecode.getVisibility(mixinField).isLessThan(Visibility.PUBLIC)) {
                     String uniqueName = context.getUniqueName(mixinField);
                     MixinPreProcessorStandard.logger.log(this.mixin.getLoggingLevel(), "Renaming @Unique field {}{} to {} in {}",
                             mixinField.name, mixinField.desc, uniqueName, this.mixin);
@@ -653,6 +648,14 @@ class MixinPreProcessorStandard {
 
                 iter.remove();
                 continue;
+            } else if (!Bytecode.compareFlags(mixinField, target, Opcodes.ACC_STATIC)) {
+            	if (isShadow) {
+	                throw new InvalidMixinException(this.mixin, String.format("STATIC modifier of @Shadow field %s in %s does not match the target",
+	                        mixinField.name, this.mixin));
+            	} else {
+            		throw new InvalidMixinException(this.mixin, String.format("Field %s in %s conflicts with %sstatic field in the target (%s)",
+            				mixinField.name, mixin, Bytecode.isStatic(target) ? "" : "non-", context.getTarget()));
+            	}
             }
             
             // Check that the shadow field has a matching descriptor
