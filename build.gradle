@@ -481,14 +481,8 @@ publishing {
     }
 
     repositories {
-        if (project.hasProperty("spongeRepo")) {
-            maven {
-                url = uri(project.property("spongeRepo").toString())
-                credentials {
-                    username = project.property("spongeUsername").toString()
-                    password = project.property("spongePassword").toString()
-                }
-            }
+        maven {
+            url "artifactregistry://us-maven.pkg.dev/moonsworth-299m4oir/maven"
         }
     }
 }
