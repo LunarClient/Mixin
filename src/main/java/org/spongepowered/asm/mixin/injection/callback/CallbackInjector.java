@@ -750,6 +750,8 @@ public class CallbackInjector extends Injector {
         if (store) {
             callback.target.addLocalVariable(this.callbackInfoVar, "callbackInfo" + this.callbackInfoVar, "L" + this.callbackInfoClass + ";");
             callback.add(new VarInsnNode(Opcodes.ASTORE, this.callbackInfoVar), false, false, head);
+        } else if (callback.isAtReturn) {
+            callback.target.addLocalVariable(this.callbackInfoVar, "returnValue" + this.callbackInfoVar, callback.target.returnType.getDescriptor());
         }
     }
 

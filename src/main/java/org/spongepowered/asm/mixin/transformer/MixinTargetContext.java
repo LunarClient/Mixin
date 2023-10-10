@@ -875,9 +875,8 @@ public class MixinTargetContext extends ClassContext implements IMixinContext {
     }
     
     private void updateBinding(MethodNode method, MemberRef methodRef, Traversal traversal) {
-        if (Constants.CTOR.equals(method.name)
-                || methodRef.getOwner().equals(this.getTarget().getClassRef())
-                || this.getTarget().getClassRef().startsWith("<")) {
+        if (Constants.CTOR.equals(methodRef.getName())
+                || methodRef.getOwner().equals(this.getTarget().getClassRef())) {
             return;
         }
         
