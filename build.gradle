@@ -143,6 +143,7 @@ sourceSets {
         ext.languageVersion = langVer
         ext.modularityExcluded = true // don't add ourselves
     }
+    modularityDummy {}
 }
 
 // Because Mixin aims to support a variety of environments, we have to be able to run with older versions of GSON and Guava that lack official module
@@ -159,6 +160,9 @@ dependencies {
     def guava = 'com.google.guava:guava:17.0' // for 1.8
     def log4j2 = 'org.apache.logging.log4j:log4j-core:2.11.2'
     def gson = 'com.google.code.gson:gson:2.2.4'
+
+//    stagingJar guava
+//    stagingJar gson
 
     implementation guava
     implementation log4j2
@@ -348,7 +352,7 @@ if (JavaVersion.current().isJava8Compatible()) {
 }
 
 task stagingJar(type: ShadowJar) {
-    sourceSets.findAll { !(it.name =~ /example|test/) }.each {
+    sourceSets.findAll { !(it.name =~ /example|test|modularityDummy/) }.each {
         from it.output
     }
     configurations = [project.configurations.stagingJar]
@@ -370,7 +374,7 @@ task stagingJar(type: ShadowJar) {
     if (project.doSignJar) {
         archiveClassifier.set('unsigned')
     }
-    
+
     mergeServiceFiles()
 }
 
@@ -385,7 +389,7 @@ shadowJar  {
 build.dependsOn(shadowJar)
 
 if (project.doSignJar) {
-    // Define signjar task    
+    // Define signjar task
     task signJar() {
         inputs.files(stagingJar.outputs)
         outputs.files stagingJar.outputs.files.collect {
@@ -434,7 +438,7 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 artifacts {
     if (project.doSignJar) {
         archives signJar.outputs.files[0]
-    } else { 
+    } else {
         archives stagingJar
     }
     archives sourceJar

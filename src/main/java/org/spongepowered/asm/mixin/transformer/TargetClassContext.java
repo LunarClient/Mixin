@@ -407,9 +407,10 @@ final class TargetClassContext extends ClassContext implements ITargetClassConte
     }
     
     /**
-     * Run extensions before apply
+     * Run extensions before apply and clean up any global state in case this is a hotswap
      */
     private void preApply() {
+        this.getClassInfo().getMethodMapper().reset();
         this.extensions.preApply(this);
     }
 

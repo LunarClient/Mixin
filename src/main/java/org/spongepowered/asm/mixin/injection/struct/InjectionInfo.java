@@ -473,6 +473,8 @@ public abstract class InjectionInfo extends SpecialMethodInfo implements ISliceC
                     String.format("Critical injection failure: %s %s%s in %s failed injection check, %d succeeded of %d allowed.%s",
                     description, this.methodName, this.method.desc, this.mixin, this.injectedCallbackCount, this.maxCallbackCount, extraInfo));
         }
+
+        this.slices.postInject();
     }
     
     /**

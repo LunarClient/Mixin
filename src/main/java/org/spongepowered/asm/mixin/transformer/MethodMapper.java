@@ -76,6 +76,14 @@ class MethodMapper {
     public ClassInfo getClassInfo() {
         return this.info;
     }
+
+    /**
+     * Resets the counters to prepare for application, which can happen multiple times due to hotswap.
+     */
+    public void reset() {
+        this.nextUniqueMethodIndex = 0;
+        this.nextUniqueFieldIndex = 0;
+    }
     
     /**
      * Conforms an injector handler method

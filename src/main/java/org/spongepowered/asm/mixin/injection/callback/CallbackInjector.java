@@ -212,10 +212,7 @@ public class CallbackInjector extends Injector {
             this.invoke = target.extendStack();
             this.ctor = target.extendStack();
 
-            this.invoke.add(target.arguments.length);
-            if (this.canCaptureLocals) {
-                this.invoke.add(this.localTypes.length - this.frameSize);
-            }
+            this.invoke.add().add(handlerArgs);
 
             //If the handler doesn't captureArgs, the CallbackInfo(Returnable) will be the first LVT slot, otherwise it will be at the target's frameSize
             int callbackInfoSlot = handlerArgs.length == 1 ? Bytecode.isStatic(handler) ? 0 : 1 : frameSize;

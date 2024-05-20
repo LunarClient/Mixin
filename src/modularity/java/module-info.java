@@ -61,6 +61,12 @@ module org.spongepowered.mixin {
     //requires static com.google.gson;
     requires static gson;
 
+    // Gson's module dependencies
+    // Optional dependency on java.sql
+    requires static java.sql;
+    // Optional dependency on jdk.unsupported for JDK's sun.misc.Unsafe
+    requires static jdk.unsupported;
+
     //
     // Exports
     //
@@ -146,4 +152,6 @@ module org.spongepowered.mixin {
     provides org.spongepowered.tools.obfuscation.service.IObfuscationService
         with org.spongepowered.tools.obfuscation.mcp.ObfuscationServiceMCP,
              org.spongepowered.tools.obfuscation.fg3.ObfuscationServiceFG3;
+			 
+    uses org.spongepowered.include.com.google.common.base.PatternCompiler;
 }
