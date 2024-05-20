@@ -42,9 +42,11 @@ ext.packaging = 'jar'
 ext.asmVersion = project.hasProperty("asmVersion") ? asmVersion : '9.0'
 ext.legacyForgeAsmVersion = project.hasProperty("legacyForgeAsmVersion") ? asmVersion : '5.0.3'
 
+var langVer = 17
+
 java {
     modularity.inferModulePath = false
-    toolchain.languageVersion = JavaLanguageVersion.of(16)
+    toolchain.languageVersion = JavaLanguageVersion.of(langVer)
 }
 
 // True to do jar signing task
@@ -87,28 +89,28 @@ configurations {
 
 sourceSets {
     legacy {
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     main {
         compileClasspath += legacy.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     ap {
         compileClasspath += main.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     fernflower {
         compileClasspath += main.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
         ext.modularityExcluded = true
     }
     agent {
         compileClasspath += main.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     bridge {
         compileClasspath += main.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
         ext.modularityExcluded = true
     }
     example {
@@ -121,24 +123,24 @@ sourceSets {
     }
     launchwrapper {
         compileClasspath += main.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     modlauncher {
         compileClasspath += main.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     modlauncher4 {
         compileClasspath += main.output
         compileClasspath += modlauncher.output
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
     }
     modlauncher9 {
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
         compileClasspath += main.output
         compileClasspath += modlauncher.output
     }
     modularity {
-        ext.languageVersion = 16
+        ext.languageVersion = langVer
         ext.modularityExcluded = true // don't add ourselves
     }
 }
@@ -420,7 +422,7 @@ task sourceJar(type: Jar) {
         from it.java
         from it.resources
     }
-	classifier = "sources"
+    setArchiveClassifier("sources")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
@@ -432,7 +434,7 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 artifacts {
     if (project.doSignJar) {
         archives signJar.outputs.files[0]
-    } else {
+    } else { 
         archives stagingJar
     }
     archives sourceJar
