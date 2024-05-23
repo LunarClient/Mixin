@@ -460,6 +460,8 @@ publishing {
         mavenJava(MavenPublication) {
             artifactId = project.archivesBaseName
             artifact stagingJar
+            artifact sourceJar
+            artifact javadocJar
             pom {
                 name = project.archivesBaseName
                 packaging = project.packaging
