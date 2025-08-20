@@ -231,11 +231,6 @@ public final class ClassInfo {
          * Frame local count
          */
         public final int locals;
-        
-        /**
-         * Frame local size 
-         */
-        public final int size;
 
         /**
          * Fabric: non-adjusted frame size for legacy support
@@ -246,16 +241,14 @@ public final class ClassInfo {
             this.index = index;
             this.type = type;
             this.locals = locals;
-            this.size = size;
             this.rawSize = size;
         }
 
-        FrameData(int index, FrameNode frameNode, int initialFrameSize) {
+        FrameData(int index, FrameNode frameNode) {
             this.index = index;
             this.type = frameNode.type;
             this.locals = frameNode.local != null ? frameNode.local.size() : 0;
             this.rawSize = Locals.computeFrameSize(frameNode, 0);
-            this.size = Math.max(rawSize, initialFrameSize);
         }
 
         /* (non-Javadoc)
@@ -264,7 +257,7 @@ public final class ClassInfo {
         @Override
         public String toString() {
             return String.format("FrameData[index=%d, type=%s, locals=%d size=%d]", this.index, FrameData.FRAMETYPES[this.type + 1], this.locals,
-                    this.size);
+                    this.rawSize);
         }
     }
     
@@ -537,7 +530,7 @@ public final class ClassInfo {
             for (Iterator<AbstractInsnNode> iter = method.instructions.iterator(); iter.hasNext();) {
                 AbstractInsnNode insn = iter.next();
                 if (insn instanceof FrameNode) {
-                    frames.add(new FrameData(method.instructions.indexOf(insn), (FrameNode)insn, Bytecode.getFirstNonArgLocalIndex(method)));
+                    frames.add(new FrameData(method.instructions.indexOf(insn), (FrameNode)insn));
                 }
             }
             return frames;

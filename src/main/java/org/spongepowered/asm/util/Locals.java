@@ -339,7 +339,7 @@ public final class Locals {
             return getLocalsAt092(classNode, method, node);
         }
     }
-    
+
     /**
      * <p>Attempts to identify available locals at an arbitrary point in the
      * bytecode specified by node.</p>
@@ -458,13 +458,13 @@ public final class Locals {
                 if (frameNode.type == Opcodes.F_SAME || frameNode.type == Opcodes.F_SAME1) {
                     break handleFrame;
                 }
-                
-                int frameNodeSize = Locals.computeFrameSize(frameNode, initialFrameSize);
+
                 FrameData frameData = frameIndex < frames.size() ? frames.get(frameIndex) : null;
 
                 if (frameData != null) {
                     if (frameData.type == Opcodes.F_FULL) {
-                        knownFrameSize = lastFrameSize = frameSize = Math.max(initialFrameSize, Math.min(frameNodeSize, frameData.size));
+                        int frameNodeSize = Locals.computeFrameSize(frameNode, initialFrameSize);
+                        knownFrameSize = lastFrameSize = frameSize = frameNodeSize;
                     } else {
                         frameSize = Locals.getAdjustedFrameSize(frameSize, frameData, initialFrameSize);
                     }
@@ -982,7 +982,7 @@ public final class Locals {
      * @return new frame size
      */
     private static int getAdjustedFrameSize(int currentSize, FrameNode frameNode, int initialFrameSize) {
-        return Locals.getAdjustedFrameSize(currentSize, frameNode.type, Locals.computeFrameSize(frameNode, initialFrameSize), initialFrameSize);
+        return Locals.getAdjustedFrameSize(currentSize, frameNode.type, Locals.computeFrameSize(frameNode, 0), initialFrameSize);
     }
 
     /**
@@ -996,7 +996,7 @@ public final class Locals {
      * @return new frame size
      */
     private static int getAdjustedFrameSize(int currentSize, FrameData frameData, int initialFrameSize) {
-        return Locals.getAdjustedFrameSize(currentSize, frameData.type, frameData.size, initialFrameSize);
+        return Locals.getAdjustedFrameSize(currentSize, frameData.type, frameData.rawSize, initialFrameSize);
     }
     
     /**
