@@ -37,6 +37,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -333,12 +334,338 @@ public final class Locals {
      */
     public static LocalVariableNode[] getLocalsAt(ClassNode classNode, MethodNode method, AbstractInsnNode node, int fabricCompatibility) {
         if (fabricCompatibility >= org.spongepowered.asm.mixin.FabricUtil.COMPATIBILITY_0_10_0) {
-            return Locals.getLocalsAt(classNode, method, node, Settings.DEFAULT);
+            return Locals.getLocalsAt(classNode, method, node);
         } else {
             return getLocalsAt_0_9_2(classNode, method, node);
         }
     }
-    
+
+    public static LocalVariableNode[] getLocalsAt(ClassNode classNode, MethodNode method, AbstractInsnNode node) {
+        if (method.localVariables == null) {
+            return new LocalVariableNode[0];
+        }
+
+        // Skip label and line number nodes
+        for (int i = 0; i < 3 && (node instanceof LabelNode || node instanceof LineNumberNode); i++) {
+            AbstractInsnNode nextNode = Locals.nextNode(method.instructions, node);
+            if (nextNode instanceof FrameNode) { // Do not ffwd over frames
+                break;
+            }
+            node = nextNode;
+        }
+
+        int targetIndex = method.instructions.indexOf(node);
+
+        List<Type> interfaces = null;
+        if (classNode.interfaces != null) {
+            interfaces = new ArrayList<>();
+            for (String interfaceName : classNode.interfaces) {
+                interfaces.add(Type.getObjectType(interfaceName));
+            }
+        }
+
+        Type objectType = null;
+        if (classNode.superName != null) {
+            objectType = Type.getObjectType(classNode.superName);
+        }
+
+        // Initialize the ASM's Analyzer, which will get us locals. Pass in our MixinVerifier class
+        // for safety (the same thing is done below in generateLocalVariableTable(), copied it)
+        Analyzer<BasicValue> analyzer = new Analyzer<>(
+                new MixinVerifier(
+                        ASM.API_VERSION,
+                        Type.getObjectType(classNode.name),
+                        objectType,
+                        interfaces,
+                        false
+                )
+        );
+
+        // Run the Analyzer. If the method is invalid (shouldn't happen), print and return out
+        Frame<BasicValue>[] frames;
+        try {
+            frames = analyzer.analyze(classNode.name, method);
+        } catch (AnalyzerException ex) {
+            ex.printStackTrace();
+            return new LocalVariableNode[0];
+        }
+
+        // Get the frame at that specific insn
+        Frame<BasicValue> frame = frames[targetIndex];
+
+        if (frame == null) {
+            return new LocalVariableNode[0];
+        }
+
+        // Unfortunately, there is an issue with the Analyzer. Even though it returns the correct values, it returns
+        // too many of them, frames are always `nLocals` long. The extra entries will be garbage from previous frames,
+        // which can break local detection is a mixin used @Local without an index and a 2nd entry with that type is
+        // in the extras. This following method is a very simple implementation of the local detection which ignores the
+        // type of locals (so we don't need to track the stack and process each insn), so we can get how many frames to
+        // keep. This issue has been reported here: https://gitlab.ow2.org/asm/asm/-/issues/318033
+        int localCount = Locals.countLocals(method, node);
+
+        // Now that we have the correct count, let's gather the correct locals
+        int localSize = Math.min(frame.getLocals(), localCount);
+        LocalVariableNode[] result = new LocalVariableNode[localSize];
+
+        int nameIndex = 0;
+
+        for (int localIndex = 0; localIndex < localSize; ++localIndex) {
+            BasicValue v = frame.getLocal(localIndex);
+
+            if (v == null) {
+                continue;
+            }
+
+            Type type = v.getType();
+
+            if (type == null) {
+                continue;
+            }
+
+            String name;
+            String descriptor = type.getDescriptor();
+
+            // Gather local info, from the local variable table if present, or generate it otherwise
+            if (localIndex == 0 && (method.access & Opcodes.ACC_STATIC) == 0) {
+                name = "this";
+            } else {
+                LocalVariableNode best = null;
+                int bestRange = Integer.MAX_VALUE;
+
+                for (LocalVariableNode lv : method.localVariables) {
+                    if (lv.index != localIndex) {
+                        continue;
+                    }
+
+                    int startIdx = method.instructions.indexOf(lv.start);
+                    int endIdx = method.instructions.indexOf(lv.end);
+
+                    if (targetIndex >= startIdx && targetIndex < endIdx) {
+                        int range = endIdx - startIdx;
+
+                        if (range < bestRange) {
+                            bestRange = range;
+                            best = lv;
+                        }
+                    }
+                }
+
+                if (best == null) {
+                    name = "var" + nameIndex++;
+                } else if (best instanceof SyntheticLocalVariableNode) { // Skip if added by Mixin
+                    continue;
+                } else {
+                    // Do not only take the name from the table, the type too. This is needed by boolean locals that
+                    // will be ints in the Analyzer's result
+                    result[localIndex] = best;
+                    continue;
+                }
+            }
+
+            result[localIndex] = new LocalVariableNode(
+                    name,
+                    descriptor,
+                    null,
+                    null,
+                    null,
+                    localIndex
+            );
+        }
+
+        // Return out now that we got everything
+        return result;
+    }
+
+    private static int countLocals(MethodNode method, AbstractInsnNode targetNode) {
+        int count = 0;
+
+        // `this`
+        if ((method.access & Opcodes.ACC_STATIC) == 0) {
+            ++count;
+        }
+
+        // Parameter types
+        for (Type argType : Type.getArgumentTypes(method.desc)) {
+            count += argType.getSize();
+        }
+
+        // Frame nodes are relative to each other, and discard any store operations that happened in between. We need
+        // to count separately and reset when there's a frame node
+        int countWithStores = count;
+
+        // The zombie logic is very simple here, and no need for options. They will only survive 1 insn and be
+        // resurrected when we reach the target node, not any time before
+        Integer[] zombies = new Integer[method.maxLocals];
+        Map<AbstractInsnNode, Integer> jumps = new HashMap<>();
+
+        for (AbstractInsnNode node : method.instructions) {
+            // We found the correct instruction, let's return the results
+            if (node == targetNode) {
+                break;
+            }
+
+            // Increase zombie lifetime
+            if (!(node instanceof LabelNode || node instanceof LineNumberNode)) {
+                for (int i = 0; i < zombies.length; i++) {
+                    Integer zombie = zombies[i];
+
+                    if (zombie != null) {
+                        zombies[i] = zombie + 1;
+                    }
+                }
+            }
+
+            if (node instanceof VarInsnNode) {
+                // Use var nodes to know where a temporary local is being added
+                switch (node.getOpcode()) {
+                    case Opcodes.ILOAD:
+                    case Opcodes.FLOAD:
+                    case Opcodes.ALOAD:
+                    case Opcodes.ISTORE:
+                    case Opcodes.FSTORE:
+                    case Opcodes.ASTORE: {
+                        int var = ((VarInsnNode) node).var;
+
+                        countWithStores = Math.max(countWithStores, var + 1);
+                        zombies[var] = null;
+                        break;
+                    }
+                    case Opcodes.LLOAD:
+                    case Opcodes.DLOAD:
+                    case Opcodes.LSTORE:
+                    case Opcodes.DSTORE: {
+                        int var = ((VarInsnNode) node).var;
+
+                        countWithStores = Math.max(countWithStores, var + 2);
+                        zombies[var] = null;
+                        zombies[var + 1] = null;
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
+                }
+            } else if (node instanceof FrameNode) {
+                FrameNode frameNode = (FrameNode) node;
+
+                switch (frameNode.type) {
+                    case Opcodes.F_NEW:
+                    case Opcodes.F_FULL:
+                        // Full node, override our frame with theirs
+                        // Calculate the frame size
+                        count = 0;
+
+                        for (Object local : frameNode.local) {
+                            if (local instanceof Integer) {
+                                int v = (Integer) local;
+
+                                if (v == Opcodes.LONG || v == Opcodes.DOUBLE) {
+                                    count += 2;
+                                } else {
+                                    count += 1;
+                                }
+                            } else {
+                                count += 1;
+                            }
+                        }
+
+                        // Reset any zombie that is now a valid local, and create ones for entries that just got removed
+                        for (int framePos = 0; framePos < countWithStores; ++framePos) {
+                            if (framePos < count) {
+                                zombies[framePos] = null;
+                            } else {
+                                zombies[framePos] = 0;
+                            }
+                        }
+
+                        break;
+                    case Opcodes.F_CHOP:
+                        // Chop, remove locals
+                        count -= frameNode.local.size();
+
+                        // Create zombies for entries that just got removed
+                        for (int framePos = count; framePos < countWithStores; ++framePos) {
+                            if (zombies[framePos] == null) {
+                                zombies[framePos] = 0;
+                            }
+                        }
+
+                        break;
+                    case Opcodes.F_APPEND:
+                        // Append frame, increase our count
+                        int toAdd = frameNode.local.size();
+
+                        // Remove zombies that are now valid locals
+                        for (int framePos = 0; framePos < toAdd; ++framePos) {
+                            zombies[count + framePos] = null;
+                        }
+
+                        // Create zombies for entries that just got removed
+                        for (int framePos = count + toAdd; framePos < countWithStores; ++framePos) {
+                            if (zombies[framePos] == null) {
+                                zombies[framePos] = 0;
+                            }
+                        }
+
+                        count += toAdd;
+                        break;
+                    case Opcodes.F_SAME:
+                    case Opcodes.F_SAME1:
+                        // Same frame, do nothing
+                        // Create zombies for entries that just got removed
+                        for (int framePos = count; framePos < countWithStores; ++framePos) {
+                            if (zombies[framePos] == null) {
+                                zombies[framePos] = 0;
+                            }
+                        }
+                        break;
+                    default:
+                        break;
+                }
+
+                // Remove all temporary locals
+                countWithStores = count;
+            } else if (node instanceof JumpInsnNode) {
+                // Backup the locals in case of a jump, so we can reuse them as zombies when the label is reached
+                // If there was already one, keep the highest count
+                int finalCountWithStores = countWithStores;
+
+                jumps.compute(
+                        ((JumpInsnNode) node).label,
+                        (key, old) -> old == null ? finalCountWithStores : Math.max(old, finalCountWithStores)
+                );
+            } else if (node instanceof LabelNode) {
+                // Find any existing jump to that label
+                Integer previous = jumps.remove(node);
+
+                if (previous != null) {
+                    int value = node.getNext() instanceof FrameNode ? -1 : 0;
+
+                    // If we found a backup, mark any extra local as a zombie
+                    for (int framePos = countWithStores; framePos < previous; ++framePos) {
+                        zombies[framePos] = value;
+                    }
+                }
+            }
+        }
+
+        // Process zombies. If any can be resurrected, add it. When one cannot, stop processing them
+        for (int framePos = countWithStores; framePos < zombies.length; ++framePos) {
+            Integer zombie = zombies[framePos];
+
+            if (zombie != null && zombie <= 1) {
+                ++countWithStores;
+            } else {
+                break;
+            }
+        }
+
+        // Return out the correct amount of locals
+        return countWithStores;
+    }
+
     /**
      * <p>Attempts to identify available locals at an arbitrary point in the
      * bytecode specified by node.</p>
