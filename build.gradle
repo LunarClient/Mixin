@@ -7,8 +7,8 @@ buildscript {
     dependencies {
         classpath 'gradle.plugin.com.hierynomus.gradle.plugins:license-gradle-plugin:0.16.1'
         classpath 'gradle.plugin.com.github.jengelman.gradle.plugins:shadow:7.0.0'
-        classpath 'com.guardsquare:proguard-gradle:' + (JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_11) ? '7.2.0' : '7.1.0')
-	classpath 'gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:2.2.0'
+        classpath 'com.guardsquare:proguard-gradle:' + (JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_11) ? '7.5.0' : '7.1.0')
+        classpath 'gradle.plugin.com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:2.2.0'
     }
 }
 
@@ -16,7 +16,6 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 // Apply plugin
 apply plugin: 'java'
-apply plugin: 'com.github.hierynomus.license'
 apply plugin: 'checkstyle'
 apply plugin: 'maven-publish'
 apply plugin: 'eclipse'
@@ -26,7 +25,7 @@ apply plugin: 'potemkin-modules'
 apply plugin: 'com.google.cloud.artifactregistry.gradle-plugin'
 
 // Default tasks
-defaultTasks 'licenseFormat', 'check', 'build'
+defaultTasks 'check', 'build'
 
 // Basic project information
 group = 'org.spongepowered'
@@ -70,8 +69,8 @@ repositories {
     }
     maven {
         // For modlauncher
-        name = 'forge'
-        url = 'https://files.minecraftforge.net/maven'
+        name = 'neoforged'
+        url = 'https://maven.neoforged.net/releases'
     }
 }
 
@@ -146,6 +145,26 @@ sourceSets {
     modularityDummy {}
 }
 
+configurations {
+    stagingJar
+
+    exampleImplementation       .extendsFrom implementation
+    fernflowerImplementation    .extendsFrom implementation
+    launchwrapperImplementation .extendsFrom implementation
+    agentImplementation         .extendsFrom implementation
+    modlauncherImplementation   .extendsFrom implementation
+    modlauncher9Implementation  .extendsFrom modlauncherImplementation
+    modularityImplementation    .extendsFrom modlauncher9Implementation
+    modularityCompileOnly       .extendsFrom compileOnly
+
+    proguard {
+        extendsFrom fernflowerImplementation
+        extendsFrom launchwrapperImplementation
+        extendsFrom modlauncherImplementation
+        extendsFrom compileClasspath
+    }
+}
+
 // Because Mixin aims to support a variety of environments, we have to be able to run with older versions of GSON and Guava that lack official module
 // names. This means the same library may appear with multiple module names. We want to be able to link our module with either of these two at
 // runtime, without having to have two versions of the library on our compile-time module path. To do this, we generate empty "potemkin" jars with
@@ -210,7 +229,7 @@ dependencies {
     modlauncher9Implementation ("cpw.mods:modlauncher:$modlauncherVersion") {
         exclude module: 'jopt-simple'
     }
-    modlauncher9Implementation 'cpw.mods:securejarhandler:0.9.+'
+    modlauncher9Implementation 'cpw.mods:securejarhandler:2.1.24'
     
     // asm bridge
     bridgeImplementation 'org.apache.logging.log4j:log4j-core:2.0-beta9'
@@ -227,11 +246,11 @@ javadoc {
     source sourceSets.ap.allJava
     options.encoding = 'UTF-8'
     exclude {
-        it.relativePath.file && it.relativePath.pathString =~ 'tools' && !(it.name =~ /SuppressedBy|package-info/) }
+        it.relativePath.file && it.relativePath.pathString =~ 'tools' && !(it.name =~ /SuppressedBy|package-info/)
+    }
     options {
         docTitle 'Welcome to the Mixin Javadoc'
         overview 'docs/javadoc/overview.html'
-        stylesheetFile file('docs/javadoc/mixin.css')
         addBooleanOption '-allow-script-in-comments', true
     }
     doLast {
@@ -279,21 +298,12 @@ processResources {
 }
 
 // License header formatting
-license {
-    ext {
-        name = "Mixin"
-        organization = "SpongePowered"
-        url = "https://www.spongepowered.org"
-    }
-    include '**/*.java'
-    header file("HEADER.txt")
-    sourceSets = project.sourceSets
-    ignoreFailures false
-    strictCheck true
-    mapping {
-        java = 'SLASHSTAR_STYLE'
-    }
+def validateHeaders = tasks.register("validateHeaders", org.spongepowered.asm.mixin.build.ValidateLicenseHeadersTasks) {
+    header = resources.text.fromFile("HEADER.txt")
+    source = sourceSets.collect { it.allJava }
 }
+
+tasks.check.dependsOn validateHeaders
 
 checkstyle {
     configProperties = [
@@ -303,7 +313,7 @@ checkstyle {
         "year"        : project.inceptionYear
     ]
     configFile = file("checkstyle.xml")
-    toolVersion = '8.44'
+    toolVersion = '10.17.0'
 }
 
 // Source compiler configuration
@@ -316,10 +326,8 @@ tasks.withType(JavaCompile) {
 def modularityInputs = objects.fileCollection()
 
 project.sourceSets.each { set -> {
-    if (set.ext.has("languageVersion")) {
-        project.tasks[set.compileJavaTaskName].javaCompiler = javaToolchains.compilerFor {
-            languageVersion = JavaLanguageVersion.of(set.ext.languageVersion)
-        }
+    if (set.ext.has("languageVersion") && JavaVersion.current().isJava9Compatible()) {
+        project.tasks[set.compileJavaTaskName].options.release = set.ext.languageVersion
     } 
     if (set.ext.has("compatibility")) {
         project.tasks[set.compileJavaTaskName].sourceCompatibility = set.ext.compatibility
@@ -336,6 +344,7 @@ project.sourceSets.each { set -> {
 
 compileModularityJava {
     inputs.files(modularityInputs)
+    options.javaModuleVersion = project.version as String
     doFirst {
         options.compilerArgs = [
             '--module-path', classpath.asPath,

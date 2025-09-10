@@ -22,24 +22,35 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package org.spongepowered.asm.util;
 
-/**
- * Comparison helpers.
- */
-public final class CompareUtil {
-	private CompareUtil() {
+package org.spongepowered.asm.mixin.build
 
-	}
+import org.gradle.api.resources.TextResource
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.SourceTask
+import org.gradle.api.tasks.TaskAction
 
-	/**
-	 * Officially added in Java 7.
-	 */
-	public static int compare(int a, int b) {
-		return ((a < b) ? -1 : ((a == b) ? 0 : 1));
-	}
+abstract class ValidateLicenseHeadersTasks extends SourceTask {
+    @Input
+    TextResource header
 
-	public static int compare(long a, long b) {
-		return ((a < b) ? -1 : ((a == b) ? 0 : 1));
-	}
+    @TaskAction
+    void run() {
+        def headerStr = header.asString()
+        def javaSources = getSource().matching(pattern -> pattern.include("**/*.java")).files
+
+        def failedFiles = []
+
+        for (def source : javaSources) {
+            if (!source.text.startsWith(headerStr)) {
+                failedFiles.add(source.name)
+                logger.warn("File {} does not have the correct license header", source.path)
+            }
+        }
+
+        if (!failedFiles.isEmpty()) {
+            throw new RuntimeException("License header validation failed for the following files:\n" +
+                                       failedFiles.join("\n"))
+        }
+    }
 }

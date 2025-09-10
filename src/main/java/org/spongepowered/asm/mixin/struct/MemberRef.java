@@ -331,6 +331,15 @@ public abstract class MemberRef {
      */
     public abstract void setDesc(String desc);
 
+    /**
+     * Whether the owner of this member is a mixin.
+     * @return Whether the owner of this member is a mixin.
+     */
+    public boolean ownerIsMixin() {
+        String owner = getOwner();
+        return !owner.startsWith("[") && ClassInfo.forName(owner).isMixin();
+    }
+
     @Override
     public String toString() {
         return String.format("%s for %s.%s%s%s", Bytecode.getOpcodeName(this.getOpcode()), this.getOwner(), this.getName(), this.isField() ? ":" : "",

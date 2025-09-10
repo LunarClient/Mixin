@@ -24,11 +24,79 @@
  */
 package org.spongepowered.asm.launch;
 
+import java.net.URISyntaxException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
+
+import org.spongepowered.asm.mixin.injection.invoke.arg.ArgsClassGenerator;
+import org.spongepowered.asm.service.MixinService;
+import org.spongepowered.asm.util.Constants;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+
+import cpw.mods.jarhandling.JarMetadata;
+import cpw.mods.jarhandling.SecureJar;
+import cpw.mods.jarhandling.SecureJar.Provider;
+import cpw.mods.jarhandling.VirtualJar;
+import cpw.mods.modlauncher.api.IModuleLayerManager;
+
 /**
- * Service for handling transforms mixin under ModLauncher, now just a concrete
- * class which extends the abstract base class used for pre-9 versions of
- * ModLauncher
+ * Service for handling transforms mixin under ModLauncher, most of the
+ * functionality is provided by the abstract base class used for pre-9 versions
+ * of ModLauncher, though we also handle SecureJarHandler requirements here, for
+ * modlauncher 10+ 
  */
 public class MixinTransformationService extends MixinTransformationServiceAbstract {
+
+    private static final String VIRTUAL_JAR_CLASS = "cpw.mods.jarhandling.VirtualJar";
+
+    @Override
+    public List<Resource> completeScan(final IModuleLayerManager layerManager) {
+        try {
+            Path codeSource = Path.of(this.getClass().getProtectionDomain().getCodeSource().getLocation().toURI());
+
+            if (this.detectVirtualJar(layerManager)) {
+                try {
+                    return ImmutableList.<Resource>of(this.createVirtualJar(codeSource));
+                } catch (URISyntaxException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            
+            try {
+                return ImmutableList.<Resource>of(this.createShim(codeSource));
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+            return super.completeScan(layerManager);
+        }
+    }
+
+    private boolean detectVirtualJar(final IModuleLayerManager layerManager) {
+        try {
+            MixinService.getService().getClassProvider().findClass(MixinTransformationService.VIRTUAL_JAR_CLASS, false);
+            return true;
+        } catch (ClassNotFoundException ex) {
+            // VirtualJar not supported
+            return false;
+        }
+    }
+
+    private Resource createVirtualJar(final Path codeSource) throws URISyntaxException {
+        VirtualJar jar = new VirtualJar("mixin_synthetic", codeSource, Constants.SYNTHETIC_PACKAGE, ArgsClassGenerator.SYNTHETIC_PACKAGE);
+        return new Resource(IModuleLayerManager.Layer.GAME, ImmutableList.<SecureJar>of(jar));
+    }
+
+    @SuppressWarnings("removal")
+    private Resource createShim(final Path codeSource) throws URISyntaxException {
+        final Path path = codeSource.resolve("mixin_synthetic");
+        final Set<String> packages = ImmutableSet.<String>of(Constants.SYNTHETIC_PACKAGE, ArgsClassGenerator.SYNTHETIC_PACKAGE);
+        SecureJar jar = SecureJar.from(sj -> JarMetadata.fromFileName(path, packages, ImmutableList.<Provider>of()), codeSource);
+        return new Resource(IModuleLayerManager.Layer.GAME, ImmutableList.<SecureJar>of(jar));
+    }
     
 }

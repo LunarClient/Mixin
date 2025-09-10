@@ -125,15 +125,15 @@ public class SyntheticBridgeException extends MixinException {
         printer.add().kv("Method", this.name + this.desc).kv("Problem Type", this.problem).add().hr();
         String merged = Annotations.<String>getValue(Annotations.getVisible(mda, MixinMerged.class), "mixin");
         String owner = merged != null ? merged : context.getTargetClassRef().replace('/', '.');
-        this.printMethod(printer.add("Existing method").add().kv("Owner", owner).add(), mda).hr();
-        this.printMethod(printer.add("Incoming method").add().kv("Owner", context.getClassRef().replace('/', '.')).add(), mdb).hr();
+        this.printMethod(printer.add("Existing method").add().kv("Owner", owner).add(), mda, a).hr();
+        this.printMethod(printer.add("Incoming method").add().kv("Owner", context.getClassRef().replace('/', '.')).add(), mdb, b).hr();
         this.printProblem(printer, context, mda, mdb).print(System.err);
     }
 
-    private PrettyPrinter printMethod(PrettyPrinter printer, MethodNode method) {
-        int index = 0;
-        for (Iterator<AbstractInsnNode> iter = method.instructions.iterator(); iter.hasNext(); index++) {
-            printer.kv(index == this.index ? ">>>>" : "", Bytecode.describeNode(iter.next()));
+    private PrettyPrinter printMethod(PrettyPrinter printer, MethodNode method, AbstractInsnNode marker) {
+        for (Iterator<AbstractInsnNode> iter = method.instructions.iterator(); iter.hasNext();) {
+            AbstractInsnNode insn = iter.next();
+            printer.kv(insn == marker ? ">>>>" : "", Bytecode.describeNode(insn));
         }
         return printer.add();
     }

@@ -22,29 +22,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package org.spongepowered.asm.mixin.injection.invoke.util;
+package org.spongepowered.asm.mixin.injection.struct;
 
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.MethodInsnNode;
-import org.spongepowered.asm.mixin.injection.invoke.RedirectInjector;
-import org.spongepowered.asm.mixin.injection.struct.InjectionNodes.InjectionNode;
+/**
+ * An InjectionNode decoration which can chain to a previously registered
+ * decoration with the same type and key.
+ * 
+ * @param <T> the decoration type
+ */
+public interface IChainedDecoration<T> {
+    
+    /**
+     * Called when this decoration replaces a previous decoration with the same
+     * key
+     * 
+     * @param old The previous decoration
+     */
+    public abstract void replace(T old);
 
-import java.util.Arrays;
-
-public class InvokeUtil {
-    public static Type[] getOriginalArgs(InjectionNode node) {
-        return Type.getArgumentTypes(((MethodInsnNode) node.getOriginalTarget()).desc);
-    }
-
-    public static Type[] getCurrentArgs(InjectionNode node) {
-        MethodInsnNode original = (MethodInsnNode) node.getOriginalTarget();
-        MethodInsnNode current = (MethodInsnNode) node.getCurrentTarget();
-        Type[] currentArgs = Type.getArgumentTypes(current.desc);
-        if (node.isReplaced() && node.hasDecoration(RedirectInjector.Meta.KEY) && original.getOpcode() != Opcodes.INVOKESTATIC) {
-            // A redirect on a non-static target method will have an extra arg at the start that we don't care about.
-            return Arrays.copyOfRange(currentArgs, 1, currentArgs.length);
-        }
-        return currentArgs;
-    }
 }

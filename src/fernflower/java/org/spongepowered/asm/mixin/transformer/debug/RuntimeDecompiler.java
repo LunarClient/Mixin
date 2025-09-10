@@ -26,8 +26,6 @@ package org.spongepowered.asm.mixin.transformer.debug;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.Comparator;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.Map;
@@ -73,10 +71,7 @@ public class RuntimeDecompiler extends IFernflowerLogger implements IDecompiler,
         this.outputPath = outputPath;
         if (this.outputPath.exists()) {
             try {
-                java.nio.file.Files.walk(this.outputPath.toPath())
-                    .sorted(Comparator.reverseOrder())
-                    .map(Path::toFile)
-                    .forEach(File::delete);
+                org.spongepowered.asm.util.Files.deleteRecursively(this.outputPath);
             } catch (IOException ex) {
                 this.logger.debug("Error cleaning output directory: {}", ex.getMessage());
             }

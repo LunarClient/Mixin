@@ -24,6 +24,8 @@
  */
 package org.spongepowered.asm.mixin.transformer;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,6 +38,7 @@ import java.util.Set;
 
 import org.spongepowered.asm.logging.Level;
 import org.spongepowered.asm.logging.ILogger;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
@@ -50,6 +53,7 @@ import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.MixinEnvironment.Option;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
@@ -232,7 +236,11 @@ public final class ClassInfo {
          * Frame local size 
          */
         public final int size;
-        public final int rawSize; // Fabric non-adjusted frame size for legacy support
+
+        /**
+         * Fabric: non-adjusted frame size for legacy support
+         */
+        public final int rawSize;
 
         FrameData(int index, int type, int locals, int size) {
             this.index = index;
@@ -899,6 +907,59 @@ public final class ClassInfo {
         } finally {
             timer.end();
         }
+    }
+
+    private ClassInfo(Class<?> cls) {
+        this.name = getName(cls);
+        this.superName = cls.getSuperclass() != null ? getName(cls.getSuperclass()) : ClassInfo.JAVA_LANG_OBJECT;
+        this.initialisers = new HashSet<Method>();
+        this.methods = new HashSet<Method>();
+        this.fields = new HashSet<Field>();
+        this.isInterface = cls.isInterface();
+        Class<?>[] interfaces = cls.getInterfaces();
+        this.interfaces = new HashSet<String>(interfaces.length);
+        this.isMixin = false;
+        this.mixin = null;
+        this.mixins = Collections.emptySet();
+
+        for (Class<?> iface : interfaces) {
+            this.interfaces.add(getName(iface));
+        }
+
+        for (Constructor<?> ctor : cls.getDeclaredConstructors()) {
+            if ((ctor.getModifiers() & (Modifier.PROTECTED | Modifier.PUBLIC)) == 0) {
+                continue;
+            }
+
+            this.initialisers.add(new Method(ctor.getName(), org.objectweb.asm.Type.getConstructorDescriptor(ctor), ctor.getModifiers()));
+        }
+
+        for (java.lang.reflect.Method method : cls.getDeclaredMethods()) {
+            if ((method.getModifiers() & (Modifier.PROTECTED | Modifier.PUBLIC)) == 0) {
+                continue;
+            }
+
+            this.methods.add(new Method(method.getName(), org.objectweb.asm.Type.getMethodDescriptor(method), method.getModifiers()));
+        }
+
+        for (java.lang.reflect.Field field : cls.getDeclaredFields()) {
+            if ((field.getModifiers() & (Modifier.PROTECTED | Modifier.PUBLIC)) == 0) {
+                continue;
+            }
+
+            this.fields.add(new Field(field.getName(), org.objectweb.asm.Type.getDescriptor(field.getType()), field.getModifiers()));
+        }
+
+        this.isProbablyStatic = cls.getEnclosingClass() == null || Modifier.isStatic(cls.getModifiers());
+        this.methodMapper = null;
+
+        this.access = cls.getModifiers();
+        this.isInner = cls.getEnclosingClass() != null;
+        this.outerName = cls.getDeclaringClass() != null ? getName(cls.getDeclaringClass()) : null;
+    }
+
+    private static String getName(Class<?> cls) {
+        return cls.getName().replace('.', '/');
     }
 
     void addInterface(String iface) {
@@ -2019,8 +2080,13 @@ public final class ClassInfo {
         ClassInfo info = ClassInfo.cache.get(className);
         if (info == null) {
             try {
-                ClassNode classNode = MixinService.getService().getBytecodeProvider().getClassNode(className);
-                info = new ClassInfo(classNode);
+                if (className.startsWith("java/")) { // this would ideally check the platform class loader for other jdk classes, but needs extra api to do so
+                    info = new ClassInfo(Class.forName(className.replace('/', '.'), false, ClassInfo.class.getClassLoader()));
+                } else {
+                    int flags = MixinEnvironment.getCurrentEnvironment().getOption(Option.CLASSREADER_EXPAND_FRAMES) ? ClassReader.EXPAND_FRAMES : 0;
+                    ClassNode classNode = MixinService.getService().getBytecodeProvider().getClassNode(className, true, flags);
+                    info = new ClassInfo(classNode);
+                }
             } catch (Exception ex) {
                 ClassInfo.logger.catching(Level.TRACE, ex);
                 ClassInfo.logger.warn("Error loading class: {} ({}: {})", className, ex.getClass().getName(), ex.getMessage());

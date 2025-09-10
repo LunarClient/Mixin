@@ -73,7 +73,6 @@ import org.spongepowered.asm.util.Bytecode;
 import org.spongepowered.asm.util.LanguageFeatures;
 import org.spongepowered.asm.util.asm.ASM;
 import org.spongepowered.asm.util.asm.MethodNodeEx;
-import org.spongepowered.asm.util.CompareUtil;
 import org.spongepowered.asm.util.perf.Profiler;
 import org.spongepowered.asm.util.perf.Profiler.Section;
 
@@ -579,7 +578,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
                     
                     if (!targetClass.hasSuperClass(classNode.superName, ClassInfo.Traversal.SUPER)) {
                         ClassInfo superClass = ClassInfo.forName(classNode.superName);
-                        if (superClass.isMixin()) {
+                        if (superClass != null && superClass.isMixin()) {
                             // If superclass is a mixin, check for hierarchy derp
                             for (ClassInfo superTarget : superClass.getTargets()) {
                                 if (targetClasses.contains(superTarget)) {
@@ -1271,6 +1270,10 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
     Set<String> getInterfaces() {
         return this.getState().getInterfaces();
     }
+
+    int getClassVersion() {
+        return this.getState().getClassNode().version;
+    }
     
     /**
      * Get transformer extensions
@@ -1311,7 +1314,8 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
                     this.logger.error("Classloader restrictions [{}] encountered loading {}, name: {}", restrictions, this, mixinClassName);
                 }
             }
-            classNode = this.service.getBytecodeProvider().getClassNode(mixinClassName, true);
+            int readerFlags = this.parent.getEnvironment().getOption(Option.CLASSREADER_EXPAND_FRAMES) ? ClassReader.EXPAND_FRAMES : 0;
+            classNode = this.service.getBytecodeProvider().getClassNode(mixinClassName, true, readerFlags);
         } catch (ClassNotFoundException ex) {
             throw new ClassNotFoundException(String.format("The specified mixin '%s' was not found", mixinClassName));
         } catch (IOException ex) {
@@ -1344,7 +1348,7 @@ class MixinInfo implements Comparable<MixinInfo>, IMixinInfo {
             return 0;
         }
         if (other.priority == this.priority) {
-            return CompareUtil.compare(this.order, other.order);
+            return Integer.compare(this.order, other.order);
         } else {
             return (this.priority < other.priority) ? -1 : 1;
         }

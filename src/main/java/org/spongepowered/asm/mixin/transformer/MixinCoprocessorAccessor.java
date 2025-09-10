@@ -126,13 +126,18 @@ class MixinCoprocessorAccessor extends MixinCoprocessor {
         return ProcessResult.PASSTHROUGH_TRANSFORMED;
     }
 
+    @Override
+    public boolean couldTransform(String className) {
+        return MixinEnvironment.getCompatibilityLevel().supports(LanguageFeatures.METHODS_IN_INTERFACES) && this.accessorMixins.containsKey(className);
+    }
+
     private Method getAccessorMethod(MixinInfo mixin, MethodNode methodNode, ClassInfo targetClass) throws MixinTransformerError {
         Method method = mixin.getClassInfo().findMethod(methodNode, ClassInfo.INCLUDE_ALL);
         
         // Normally the target will be renamed when the mixin is conformed to the target, if we get here
         // without this happening then we will end up invoking an undecorated method, which is bad!
         if (!method.isConformed()) {
-            String uniqueName = targetClass.getMethodMapper().getUniqueName(methodNode, this.sessionId, true);
+            String uniqueName = targetClass.getMethodMapper().getUniqueName(mixin, methodNode, this.sessionId, true);
             method.conform(uniqueName);
         }
         
@@ -145,7 +150,8 @@ class MixinCoprocessorAccessor extends MixinCoprocessor {
         Type[] args = Type.getArgumentTypes(methodNode.desc);
         Type returnType = Type.getReturnType(methodNode.desc);
         Bytecode.loadArgs(args, methodNode.instructions, 0);
-        methodNode.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, targetClass.getName(), method.getName(), methodNode.desc, targetClass.isInterface()));
+        methodNode.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, targetClass.getName(), method.getName(), methodNode.desc,
+                targetClass.isInterface()));
         methodNode.instructions.add(new InsnNode(returnType.getOpcode(Opcodes.IRETURN)));
         methodNode.maxStack = Bytecode.getFirstNonArgLocalIndex(args, false);
         methodNode.maxLocals = 0;
