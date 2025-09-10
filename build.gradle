@@ -45,7 +45,10 @@ var langVer = 17
 
 java {
     modularity.inferModulePath = false
-    toolchain.languageVersion = JavaLanguageVersion.of(langVer)
+
+    // Minimum version of Java required
+    sourceCompatibility = langVer
+    targetCompatibility = langVer
 }
 
 // True to do jar signing task
