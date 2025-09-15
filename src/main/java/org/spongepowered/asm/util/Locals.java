@@ -47,10 +47,13 @@ import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.AnalyzerException;
 import org.objectweb.asm.tree.analysis.BasicValue;
 import org.objectweb.asm.tree.analysis.Frame;
+import org.spongepowered.asm.logging.ILogger;
 import org.spongepowered.asm.mixin.transformer.ClassInfo;
 import org.spongepowered.asm.mixin.transformer.ClassInfo.FrameData;
 import org.spongepowered.asm.mixin.transformer.ClassInfo.Method;
+import org.spongepowered.asm.service.MixinService;
 import org.spongepowered.asm.util.asm.ASM;
+import org.spongepowered.asm.util.asm.MixinAnalyzerAdapter;
 import org.spongepowered.asm.util.asm.MixinVerifier;
 import org.spongepowered.asm.util.throwables.LVTGeneratorError;
 
@@ -58,6 +61,8 @@ import org.spongepowered.asm.util.throwables.LVTGeneratorError;
  * Utility methods for working with local variables using ASM
  */
 public final class Locals {
+
+    private static final ILogger logger = MixinService.getService().getLogger("mixin");
 
     /**
      * A local variable entry added by mixin itself, eg. by an injector
@@ -387,9 +392,11 @@ public final class Locals {
         try {
             frames = analyzer.analyze(classNode.name, method);
         } catch (AnalyzerException ex) {
-            ex.printStackTrace();
+            Locals.logger.warn("Failed to analyze method {} in class {}", method.name, classNode.name, ex);
             return new LocalVariableNode[0];
         }
+
+        MixinAnalyzerAdapter analyzerAdapter = null;
 
         // Get the frame at that specific insn
         Frame<BasicValue> frame = frames[targetIndex];
@@ -422,6 +429,37 @@ public final class Locals {
             Type type = v.getType();
 
             if (type == null) {
+                boolean is64Bits = false;
+
+                if (localIndex > 0) {
+                    LocalVariableNode previous = result[localIndex - 1];
+
+                    if (previous != null && ("J".equals(previous.desc) || "D".equals(previous.desc))) {
+                        is64Bits = true;
+                    }
+                }
+
+                if (!is64Bits) {
+                    if (analyzerAdapter == null) {
+                        analyzerAdapter = new MixinAnalyzerAdapter(classNode, method);
+
+                        analyzerAdapter.analyze(node);
+                    }
+
+                    type = analyzerAdapter.getLocal(localIndex);
+
+                    if (type != null) {
+                        result[localIndex] = new LocalVariableNode(
+                                "var" + nameIndex++,
+                                type.getDescriptor(),
+                                null,
+                                null,
+                                null,
+                                localIndex
+                        );
+                    }
+                }
+
                 continue;
             }
 
