@@ -2071,7 +2071,7 @@ public final class ClassInfo {
         className = className.replace('.', '/');
 
         ClassInfo info = ClassInfo.cache.get(className);
-        if (info == null) {
+        if (!ClassInfo.cache.containsKey(className)) {
             try {
                 if (className.startsWith("java/")) { // this would ideally check the platform class loader for other jdk classes, but needs extra api to do so
                     info = new ClassInfo(Class.forName(className.replace('/', '.'), false, ClassInfo.class.getClassLoader()));
@@ -2281,6 +2281,15 @@ public final class ClassInfo {
         } while (!type2.hasSuperClass(type1, Traversal.NONE, includeInterfaces));
         
         return type1;
+    }
+
+    public static boolean isMixin(String className) {
+        ClassInfo cachedInfo = ClassInfo.fromCache(className);
+        if (cachedInfo == null) {
+            // Mixin infos are forcefully cached, so this isn't one
+            return false;
+        }
+        return cachedInfo.isMixin();
     }
 
 }
